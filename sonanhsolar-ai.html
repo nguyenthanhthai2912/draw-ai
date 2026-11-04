@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sơn Anh Năng Lượng Xanh - Solar PV CAD Studio</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sonanh: {
+                            blue: '#1e2a78',
+                            blueLight: '#2a3b9e',
+                            blueDark: '#11184a',
+                            green: '#16a34a',
+                            greenLight: '#22c55e',
+                            greenDark: '#15803d'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0b1120; color: #f8fafc;
+            overflow: hidden; user-select: none; -webkit-user-select: none;
+            overscroll-behavior: none;
+        }
+        canvas {
+            display: block; width: 100%; height: 100%;
+            outline: none; touch-action: none;
+        }
+        .cursor-crosshair { cursor: crosshair; }
+        .cursor-default { cursor: default; }
+        .cursor-move { cursor: move; }
+        .cursor-grab { cursor: grab; }
+        .cursor-grabbing { cursor: grabbing; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #1e2a78; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #16a34a; }
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+    </style>
+</head>
+<body class="h-full flex flex-col">
+    <div id="app" class="h-full flex flex-col relative overflow-hidden">
+        
+        <!-- Toast Notification -->
+        <div v-if="ui.toast" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border-2 border-sonanh-green text-white px-4 py-2 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-2 backdrop-blur transition-all">
+            <span class="text-sonanh-greenLight text-sm">✓</span>
+            <span>{{ ui.toast }}</span>
+        </div>
+
+        <!-- ==================== TOP HEADER (SON ANH BRANDING) ==================== -->
+        <header class="bg-gradient-to-r from-[#0f172a] via-[#151f52] to-[#0f172a] border-b-2 border-sonanh-green h-14 px-2.5 lg:px-4 flex justify-between items-center z-30 shrink-0 shadow-lg">
+            <!-- Brand Logo & Company Name -->
+            <div class="flex items-center space-x-2.5">
+                <div class="w-10 h-10 bg-white rounded-lg p-1 flex flex-col items-center justify-center shadow-md border border-sonanh-green shrink-0 relative overflow-hidden">
+                    <svg viewBox="0 0 100 100" class="w-8 h-8">
+                        <circle cx="48" cy="52" r="36" fill="#1e2a78"/>
+                        <path d="M56 5 L32 54 L52 54 L20 96 L78 44 L54 44 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+                        <polygon points="68,4 54,44 74,44" fill="#16a34a"/>
+                        <polygon points="34,54 50,54 18,95" fill="#16a34a"/>
+                        <polygon points="74,46 58,66 72,88" fill="#16a34a"/>
+                    </svg>
+                </div>
+                <div class="leading-tight">
+                    <div class="flex items-center gap-1.5">
+                        <span class="font-extrabold text-xs sm:text-sm lg:text-base tracking-wide text-white uppercase">CÔNG TY TNHH</span>
+                        <span class="font-extrabold text-xs sm:text-sm lg:text-base tracking-wide text-sonanh-greenLight uppercase">NĂNG LƯỢNG XANH SƠN ANH</span>
+                    </div>
+                    <div class="text-[10px] text-slate-300 font-medium flex items-center gap-2">
+                        <span>Hệ Thống Thiết Kế Điện Mặt Trời & Bóc Tách Kỹ Thuật</span>
+                        <span class="hidden md:inline-block bg-sonanh-green/20 text-sonanh-greenLight border border-sonanh-green/40 px-1.5 py-0.2 rounded text-[9px] font-mono">Master Edition</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions (Undo/Redo/Snap/Fit/Export) -->
+            <div v-if="activeTab === 'design'" class="flex items-center space-x-1 sm:space-x-1.5 bg-slate-900/90 px-2 py-1 rounded-lg border border-slate-700 text-[11px]">
+                <button @click="undo" :disabled="hist.undoStack.length===0" class="px-2 py-1 rounded hover:bg-slate-800 active:bg-slate-700 disabled:opacity-30 font-medium" title="Hoàn tác (Ctrl+Z)">↩</button>
+                <button @click="redo" :disabled="hist.redoStack.length===0" class="px-2 py-1 rounded hover:bg-slate-800 active:bg-slate-700 disabled:opacity-30 font-medium" title="Làm lại (Ctrl+Y)">↪</button>
+                <div class="h-3.5 w-px bg-slate-700"></div>
+                <button @click="ui.snapEnabled = !ui.snapEnabled" :class="['px-2 py-1 rounded font-bold transition', ui.snapEnabled ? 'bg-sonanh-green/20 text-sonanh-greenLight border border-sonanh-green/50' : 'text-slate-400 hover:bg-slate-800']" title="Bật/Tắt tự động bắt dính (Snap)">
+                    🧲 <span class="hidden md:inline">Snap</span>
+                </button>
+                <button @click="fitToScreen" class="px-2 py-1 rounded hover:bg-slate-800 text-sky-400 font-bold" title="Căn giữa màn hình">
+                    ⛶ <span class="hidden md:inline">{{ Math.round(vp.scale * 100) }}%</span>
+                </button>
+                <button @click="exportImage" class="px-2.5 py-1 rounded bg-sonanh-green hover:bg-sonanh-greenLight text-white font-bold shadow flex items-center gap-1" title="Xuất ảnh bản vẽ có đóng dấu Sơn Anh">
+                    📷 <span class="hidden lg:inline">Ảnh Bản Vẽ</span>
+                </button>
+                <button @click="exportBomReportExcel" class="hidden sm:inline-flex px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-white font-bold shadow items-center gap-1" title="Xuất Báo cáo BOM & Tài chính ra Excel">
+                    📊 <span class="hidden xl:inline">Xuất Excel BOM</span>
+                </button>
+                <button @click="saveProjectFile" class="hidden md:inline-flex px-2 py-1 rounded bg-sonanh-blue hover:bg-sonanh-blueLight text-white border border-blue-400/30 font-medium" title="Lưu dự án (.json)">
+                    💾
+                </button>
+                <label class="hidden md:inline-flex px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 cursor-pointer font-medium" title="Mở dự án (.json)">
+                    📂 <input type="file" @change="loadProjectFile" accept=".json" class="hidden">
+                </label>
+            </div>
+
+            <!-- Mode Switcher (Config vs CAD) -->
+            <div class="flex space-x-1 bg-slate-900 p-1 rounded-lg border border-slate-700 shrink-0">
+                <button @click="activeTab = 'config'; mobileSheet = null" :class="['px-2.5 py-1 rounded text-[11px] font-bold transition', activeTab === 'config' ? 'bg-sonanh-green text-white shadow' : 'text-slate-400 hover:text-white']">
+                    1. Vật Tư & Giá Điện
+                </button>
+                <button @click="activeTab = 'design'" :class="['px-2.5 py-1 rounded text-[11px] font-bold transition', activeTab === 'design' ? 'bg-sonanh-green text-white shadow' : 'text-slate-400 hover:text-white']">
+                    2. Bản Vẽ Thiết Kế
+                </button>
+            </div>
+        </header>
+
+        <!-- ==================== MAIN WORKSPACE ==================== -->
+        <main class="flex-1 overflow-hidden relative flex">
+            
+            <!-- ==================== TAB 1: DATABASE & UNIFIED EXCEL CONFIG ==================== -->
+            <div v-if="activeTab === 'config'" class="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-950 pb-20">
+                <div class="max-w-6xl mx-auto space-y-4 sm:space-y-6">
+                    
+                    <!-- Unified Excel & Project Settings Card -->
+                    <div class="bg-slate-900 p-4 sm:p-5 rounded-xl border border-slate-800 shadow-lg">
+                        <div class="flex flex-wrap justify-between items-center gap-2 mb-4 border-b border-slate-800 pb-3">
+                            <div>
+                                <h2 class="text-sm sm:text-base font-bold text-sonanh-greenLight uppercase">Quản Lý Đồng Bộ Thiết Bị (Gộp Chung 1 File Excel Duy Nhất)</h2>
+                                <p class="text-[11px] text-slate-400">File Excel tích hợp đồng thời cả 2 Sheet: <b>DS_TamPin</b> và <b>DS_Inverter</b> giúp quản lý tập trung</p>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button @click="downloadUnifiedExcel" class="text-xs bg-sonanh-blue hover:bg-sonanh-blueLight text-white px-3 py-1.5 rounded-lg border border-blue-400/40 font-bold shadow flex items-center gap-1.5">
+                                    ⬇ Xuất / Tải File Excel Thiết Bị Chung (.xlsx)
+                                </button>
+                                <button @click="saveProjectFile" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-600 font-medium">
+                                    💾 Lưu File Dự Án (.json)
+                                </button>
+                                <label class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-600 font-medium cursor-pointer">
+                                    📂 Mở Dự Án (.json) <input type="file" @change="loadProjectFile" accept=".json" class="hidden">
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800">
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Tên Khách Hàng / Công Trình</label>
+                                <input v-model="db.settings.projectName" type="text" placeholder="VD: Điện mặt trời áp mái Sơn Anh..." class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-white font-semibold focus:border-sonanh-green outline-none">
+                                <span class="text-[10px] text-slate-400 mt-1 block">Hiển thị trên khung tên bản vẽ khi xuất ảnh & báo cáo</span>
+                            </div>
+
+                            <div class="bg-slate-950/70 p-3.5 rounded-lg border border-slate-800">
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Số giờ nắng đỉnh trung bình (h/ngày)</label>
+                                <input v-model.number="db.settings.sunHours" type="number" step="0.1" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm text-sonanh-greenLight font-bold focus:border-sonanh-green outline-none">
+                                <span class="text-[10px] text-slate-400 mt-1 block">Hiệu suất hệ thống tiêu chuẩn (PR): 80%</span>
+                            </div>
+
+                            <!-- Unified Single Excel Upload -->
+                            <div class="bg-sonanh-green/10 p-3.5 rounded-lg border-2 border-dashed border-sonanh-green/60 flex flex-col justify-between">
+                                <div>
+                                    <label class="block text-xs font-bold text-sonanh-greenLight mb-1">📥 Nạp File Excel Thiết Bị Gộp Chung (.xlsx)</label>
+                                    <input type="file" @change="importUnifiedExcel" accept=".xlsx, .xls" class="w-full text-xs text-slate-200 file:mr-2.5 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-sonanh-green file:text-white hover:file:bg-sonanh-greenLight cursor-pointer">
+                                </div>
+                                <span class="text-[10px] text-emerald-300/90 mt-1.5 block">Tự động đọc cả 2 Sheet <b>DS_TamPin</b> & <b>DS_Inverter</b> trong 1 lần chọn file.</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- PV & Inverter CRUD Tables -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg flex flex-col">
+                            <div class="flex justify-between items-center mb-3">
+                                <div>
+                                    <h3 class="font-bold text-xs sm:text-sm text-sonanh-greenLight uppercase">Sheet 1: Danh Mục Tấm Pin ({{db.panels.length}})</h3>
+                                    <span class="text-[10px] text-slate-400">Cột Excel: Tên, Dài, Rộng, Pmax, Voc</span>
+                                </div>
+                                <button @click="db.panels.push({name:'PV Mới 625W', length:2382, width:1134, pmax:625, voc:48.2})" class="bg-sonanh-green hover:bg-sonanh-greenLight text-white text-xs px-2.5 py-1 rounded font-bold">+ Thêm Pin</button>
+                            </div>
+                            <div class="overflow-x-auto border border-slate-800 rounded max-h-64">
+                                <table class="w-full text-xs text-left min-w-[420px]">
+                                    <thead class="bg-slate-950 text-slate-400 sticky top-0">
+                                        <tr><th class="p-2">Mã / Tên Tấm Pin</th><th class="p-2 w-16">Dài(mm)</th><th class="p-2 w-16">Rộng(mm)</th><th class="p-2 w-16">Pmax(W)</th><th class="p-2 w-14">Voc(V)</th><th class="p-2 w-8"></th></tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-800">
+                                        <tr v-for="(p, i) in db.panels" :key="i">
+                                            <td class="p-1.5"><input v-model="p.name" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 w-full text-white"></td>
+                                            <td class="p-1.5"><input v-model.number="p.length" type="number" class="bg-slate-950 border border-slate-800 rounded px-1 py-1 w-full text-center"></td>
+                                            <td class="p-1.5"><input v-model.number="p.width" type="number" class="bg-slate-950 border border-slate-800 rounded px-1 py-1 w-full text-center"></td>
+                                            <td class="p-1.5"><input v-model.number="p.pmax" type="number" class="bg-slate-950 border border-slate-800 rounded px-1 py-1 w-full text-center text-sonanh-greenLight font-bold"></td>
+                                            <td class="p-1.5"><input v-model.number="p.voc" type="number" step="0.1" class="bg-slate-950 border border-slate-800 rounded px-1 py-1 w-full text-center"></td>
+                                            <td class="p-1.5 text-center"><button @click="db.panels.splice(i,1)" v-if="db.panels.length>1" class="text-red-400 font-bold px-1">✕</button></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg flex flex-col">
+                            <div class="flex justify-between items-center mb-3">
+                                <div>
+                                    <h3 class="font-bold text-xs sm:text-sm text-sky-400 uppercase">Sheet 2: Danh Mục Biến Tần ({{db.inverters.length}})</h3>
+                                    <span class="text-[10px] text-slate-400">Cột Excel: Tên, Công suất, Max DC</span>
+                                </div>
+                                <button @click="db.inverters.push({name:'Inverter Mới 15kW', power:15, maxDc:1000})" class="bg-sonanh-blue hover:bg-sonanh-blueLight text-white text-xs px-2.5 py-1 rounded font-bold">+ Thêm Inverter</button>
+                            </div>
+                            <div class="overflow-x-auto border border-slate-800 rounded max-h-64">
+                                <table class="w-full text-xs text-left min-w-[340px]">
+                                    <thead class="bg-slate-950 text-slate-400 sticky top-0">
+                                        <tr><th class="p-2">Mã / Tên Biến Tần</th><th class="p-2 w-24">CS (kW)</th><th class="p-2 w-24">Max DC (V)</th><th class="p-2 w-8"></th></tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-800">
+                                        <tr v-for="(inv, i) in db.inverters" :key="i">
+                                            <td class="p-1.5"><input v-model="inv.name" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 w-full text-white"></td>
+                                            <td class="p-1.5"><input v-model.number="inv.power" type="number" step="0.5" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 w-full text-center text-sky-400 font-bold"></td>
+                                            <td class="p-1.5"><input v-model.number="inv.maxDc" type="number" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 w-full text-center"></td>
+                                            <td class="p-1.5 text-center"><button @click="db.inverters.splice(i,1)" v-if="db.inverters.length>1" class="text-red-400 font-bold px-1">✕</button></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tariffs Config -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
+                            <h2 class="font-bold text-xs sm:text-sm text-sonanh-greenLight mb-3 uppercase">Biểu Giá Điện Sinh Hoạt Bậc Thang (1 Pha)</h2>
+                            <table class="w-full text-xs text-left border border-slate-800 rounded overflow-hidden">
+                                <thead class="bg-slate-950 text-slate-400">
+                                    <tr><th class="p-2">Bậc</th><th class="p-2">Định mức (kWh)</th><th class="p-2">Đơn giá (VNĐ/kWh)</th></tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-800">
+                                    <tr v-for="(t, idx) in db.tariffs.tiered" :key="idx">
+                                        <td class="p-2 font-medium text-slate-300">Bậc {{idx+1}}</td>
+                                        <td class="p-1.5">
+                                            <input v-if="idx < 5" v-model.number="t.size" type="number" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 w-20 text-center">
+                                            <span v-else class="text-slate-400 italic px-2">Còn lại (∞)</span>
+                                        </td>
+                                        <td class="p-1.5"><input v-model.number="t.price" type="number" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 w-28 font-semibold text-sonanh-greenLight"></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
+                            <h2 class="font-bold text-xs sm:text-sm text-sky-400 mb-3 uppercase">Biểu Giá Kinh Doanh / Sản Xuất (3 Khung Giờ)</h2>
+                            <div class="space-y-3 text-xs bg-slate-950/60 p-3.5 rounded-lg border border-slate-800">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-slate-300">Giờ Bình thường (VNĐ/kWh):</span>
+                                    <input v-model.number="db.tariffs.tou.normal" type="number" class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 w-32 text-right font-bold text-white">
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-amber-400">Giờ Cao điểm (VNĐ/kWh):</span>
+                                    <input v-model.number="db.tariffs.tou.peak" type="number" class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 w-32 text-right font-bold text-amber-400">
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-slate-400">Giờ Thấp điểm (VNĐ/kWh):</span>
+                                    <input v-model.number="db.tariffs.tou.offpeak" type="number" class="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 w-32 text-right font-bold text-slate-300">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== TAB 2: CAD DESIGN & ROI ==================== -->
+            <div v-if="activeTab === 'design'" class="flex-1 flex overflow-hidden relative">
+                
+                <!-- Mobile Backdrop -->
+                <div v-if="mobileSheet" @click="mobileSheet = null" class="fixed inset-0 bg-black/60 z-30 lg:hidden backdrop-blur-xs"></div>
+
+                <!-- LEFT PANEL: TOOLS & CONFIG -->
+                <div :class="[
+                    'bg-slate-900 border-slate-800 flex flex-col z-40 text-xs shadow-2xl transition-transform duration-300 ease-out',
+                    'fixed inset-x-0 bottom-14 max-h-[78vh] rounded-t-2xl border-t lg:static lg:w-[320px] lg:max-h-none lg:rounded-none lg:border-t-0 lg:border-r lg:translate-y-0 shrink-0',
+                    mobileSheet === 'tools' ? 'translate-y-0' : 'translate-y-[120%] lg:translate-y-0'
+                ]">
+                    <div class="lg:hidden flex justify-between items-center px-4 py-2.5 border-b border-slate-800 bg-sonanh-blue/40 rounded-t-2xl">
+                        <span class="font-bold text-sonanh-greenLight text-xs uppercase tracking-wider">⚙️ Công Cụ Thiết Kế Sơn Anh</span>
+                        <button @click="mobileSheet = null" class="text-slate-300 hover:text-white bg-slate-800 px-2.5 py-0.5 rounded-full text-xs font-bold">Đóng ✕</button>
+                    </div>
+
+                    <div class="p-3 overflow-y-auto flex-1 space-y-3.5">
+                        <!-- 1. Chế độ Chuột / Công cụ CAD -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-sonanh-greenLight flex justify-between items-center">
+                                <span>1. Công Cụ Bản Vẽ</span>
+                                <label class="flex items-center gap-1 text-[10px] text-sky-400 font-normal cursor-pointer">
+                                    <input type="checkbox" v-model="ui.orthoLock"> Khóa góc 90°
+                                </label>
+                            </div>
+                            <div class="grid grid-cols-2 gap-1.5">
+                                <button @click="setTool('select'); mobileSheet=null" :class="['p-2 rounded-lg border text-left transition', ui.tool==='select' ? 'bg-sonanh-blue border-sky-400 text-white font-bold shadow' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800']">
+                                    <div class="text-xs">↖ Chọn / Kéo Thả</div>
+                                    <div class="text-[9px] text-slate-400 font-normal">Bắt dính chuẩn 20mm</div>
+                                </button>
+                                <button @click="setTool('pan'); mobileSheet=null" :class="['p-2 rounded-lg border text-left transition', ui.tool==='pan' ? 'bg-sonanh-blue border-sky-400 text-white font-bold shadow' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800']">
+                                    <div class="text-xs">✋ Kéo Bản Vẽ</div>
+                                    <div class="text-[9px] text-slate-400 font-normal">Trượt xem mặt bằng</div>
+                                </button>
+                                <button @click="setTool('draw_poly'); mobileSheet=null" :class="['p-2 rounded-lg border text-left transition', ui.tool==='draw_poly' ? 'bg-sonanh-blue border-sky-400 text-white font-bold shadow' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800']">
+                                    <div class="text-xs">📐 Vẽ Mái Đa Giác</div>
+                                    <div class="text-[9px] text-slate-400 font-normal">Chạm từng điểm đỉnh</div>
+                                </button>
+                                <button @click="setTool('draw_rect'); mobileSheet=null" :class="['p-2 rounded-lg border text-left transition', ui.tool==='draw_rect' ? 'bg-sonanh-blue border-sky-400 text-white font-bold shadow' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800']">
+                                    <div class="text-xs">▭ Mái Chữ Nhật</div>
+                                    <div class="text-[9px] text-slate-400 font-normal">Kéo tạo khung mái</div>
+                                </button>
+                            </div>
+                            <button @click="setTool('add_panel'); mobileSheet=null" :class="['w-full p-2 rounded-lg border text-center font-medium transition', ui.tool==='add_panel' ? 'bg-sonanh-blue border-sky-400 text-white font-bold' : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800']">
+                                ➕ Đặt Lẻ Từng Tấm Pin Mặt Trời
+                            </button>
+                        </div>
+
+                        <!-- 2. Rải Pin & Cấu hình Thiết bị -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2.5">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-sonanh-greenLight">2. Thiết Bị & Tự Động Rải Pin</div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-0.5">Chọn Tấm Pin (PV):</label>
+                                <select v-model="design.pvIdx" @change="updateExistingPanelsSize" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-medium">
+                                    <option v-for="(p,i) in db.panels" :value="i">{{p.name}} ({{p.pmax}}W)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-0.5">Chọn Biến tần (Inverter):</label>
+                                <select v-model="design.invIdx" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white font-medium">
+                                    <option v-for="(inv,i) in db.inverters" :value="i">{{inv.name}} ({{inv.power}}kW - Max {{inv.maxDc}}V)</option>
+                                </select>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">Hướng lắp pin:</label>
+                                    <div class="flex bg-slate-900 p-0.5 rounded border border-slate-700">
+                                        <button @click="design.ori='portrait'" :class="['flex-1 py-1.5 rounded text-[11px] transition', design.ori==='portrait'?'bg-sonanh-blue text-white font-bold':'text-slate-400']">Dọc</button>
+                                        <button @click="design.ori='landscape'" :class="['flex-1 py-1.5 rounded text-[11px] transition', design.ori==='landscape'?'bg-sonanh-blue text-white font-bold':'text-slate-400']">Ngang</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400 block mb-0.5">Lùi mép mái (m):</label>
+                                    <input v-model.number="design.margin" type="number" step="0.05" min="0" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-center text-white font-mono">
+                                </div>
+                            </div>
+                            <button @click="autoFill(); mobileSheet=null" class="w-full bg-sonanh-green hover:bg-sonanh-greenLight active:bg-sonanh-greenDark text-white py-2.5 rounded-lg font-bold shadow-lg transition">
+                                ⚡ Tự Động Rải Đầy Mái (Khe 20mm)
+                            </button>
+                        </div>
+
+                        <!-- 3. Khối Hành Lang / Vật Cản -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-amber-500/30 space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-amber-400">3. Hành Lang Bảo Trì / Vật Cản</span>
+                                <label class="flex items-center gap-1 text-[10px] text-amber-300 cursor-pointer">
+                                    <input type="checkbox" v-model="design.autoCarve"> Tự cắt Pin đè
+                                </label>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[10px] text-slate-400">Rộng X (m):</label>
+                                    <input v-model.number="design.obsW" type="number" step="0.1" min="0.2" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-center font-mono text-amber-300 font-bold">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] text-slate-400">Dài Y (m):</label>
+                                    <input v-model.number="design.obsH" type="number" step="0.1" min="0.2" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-center font-mono text-amber-300 font-bold">
+                                </div>
+                            </div>
+                            <div class="flex gap-1.5">
+                                <button @click="setTool('add_obs'); mobileSheet=null" :class="['flex-1 py-2 px-2 rounded-lg border font-bold transition', ui.tool==='add_obs' ? 'bg-amber-500 text-slate-950 border-amber-300' : 'bg-amber-600/20 text-amber-300 border-amber-500/40']">
+                                    + Đặt Hành Lang
+                                </button>
+                                <button @click="carvePanelsByObstacles" v-if="cvs.obs.length>0" class="bg-red-600/20 text-red-300 border border-red-500/40 px-3 py-2 rounded-lg font-medium">
+                                    ✂ Cắt Pin
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 4. Chia String -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-purple-500/30 space-y-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-purple-400">4. Gom Chuỗi (String PV)</span>
+                                <button @click="clearAllStrings" class="text-[10px] text-slate-400 hover:text-red-400 underline">Xóa String</button>
+                            </div>
+                            <div class="grid grid-cols-4 gap-1.5">
+                                <button v-for="s in ui.stringDefs" :key="s.id" @click="ui.actStringId = s.id; setTool('string'); mobileSheet=null"
+                                    :class="['py-1.5 px-1.5 rounded border text-[11px] font-bold flex items-center justify-between transition', ui.actStringId === s.id && ui.tool==='string' ? 'ring-2 ring-white scale-105' : 'opacity-85']"
+                                    :style="{ backgroundColor: s.color + '33', borderColor: s.color, color: '#fff' }">
+                                    <span>{{s.id}}</span>
+                                    <span class="bg-slate-950/80 px-1 rounded text-[9px]">{{ stringGroups[s.id] || 0 }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 5. Tài chính Thực chiến -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                            <div class="text-[11px] font-bold uppercase tracking-wider text-sky-400">5. Chi Phí & Hóa Đơn Tiền Điện</div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-0.5">Tổng chi phí trọn gói (VNĐ):</label>
+                                <input v-model.number="fin.totalCost" type="number" step="1000000" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-amber-400 font-bold text-sm">
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-slate-400 block mb-0.5">Biểu giá khách hàng:</label>
+                                <select v-model="fin.type" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white">
+                                    <option value="tiered">1 Pha - Sinh hoạt Bậc thang</option>
+                                    <option value="tou">3 Pha - Kinh doanh 3 Khung giờ</option>
+                                </select>
+                            </div>
+                            <div v-if="fin.type === 'tiered'">
+                                <label class="text-[10px] text-slate-400 block mb-0.5">Số hộ dùng chung đồng hồ:</label>
+                                <input v-model.number="fin.numHH" type="number" min="1" max="50" @change="adjustBills" class="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-center font-bold">
+                            </div>
+                            <div v-if="fin.type === 'tou'" class="p-2 bg-slate-900 rounded border border-slate-800 space-y-1.5 text-[10px]">
+                                <div class="text-slate-400 font-semibold">Tỷ lệ tiêu thụ cũ (%) - B.Thường / C.Điểm / T.Điểm:</div>
+                                <div class="grid grid-cols-3 gap-1">
+                                    <input v-model.number="fin.curRatio.n" type="number" class="bg-slate-950 border border-slate-700 rounded p-1 text-center">
+                                    <input v-model.number="fin.curRatio.p" type="number" class="bg-slate-950 border border-slate-700 rounded p-1 text-center text-amber-400">
+                                    <input v-model.number="fin.curRatio.o" type="number" class="bg-slate-950 border border-slate-700 rounded p-1 text-center">
+                                </div>
+                                <div class="text-sonanh-greenLight font-semibold pt-1">Tỷ lệ Solar phát vào (%) - B.Thường / C.Điểm:</div>
+                                <div class="grid grid-cols-2 gap-1">
+                                    <input v-model.number="fin.solRatio.n" type="number" class="bg-slate-950 border border-slate-700 rounded p-1 text-center">
+                                    <input v-model.number="fin.solRatio.p" type="number" class="bg-slate-950 border border-slate-700 rounded p-1 text-center text-amber-400">
+                                </div>
+                            </div>
+                            <div class="space-y-1.5 pt-1">
+                                <label class="text-[10px] font-semibold text-sonanh-greenLight block">Tiền điện hàng tháng hiện tại (VNĐ):</label>
+                                <div v-for="(b, i) in fin.bills" :key="i" class="flex items-center gap-1.5">
+                                    <span class="text-[10px] text-slate-400 w-12">Hộ {{i+1}}:</span>
+                                    <input v-model.number="fin.bills[i]" type="number" step="100000" class="flex-1 bg-slate-900 border border-slate-700 rounded p-1.5 text-right font-mono text-white">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== CENTER: INTERACTIVE TOUCH/MOUSE CAD CANVAS ==================== -->
+                <div class="flex-1 relative bg-[#090e1a] overflow-hidden pb-14 lg:pb-0" ref="canvasWrap">
+                    <canvas ref="canvasEl"
+                        :class="[isPanning || ui.tool==='pan' ? 'cursor-grabbing' : (ui.isSpace ? 'cursor-grab' : (ui.tool==='select' ? (ui.isDrag ? 'cursor-move' : 'cursor-default') : 'cursor-crosshair'))]"
+                        @wheel.prevent="onWheel"
+                        @mousedown="onMouseDown" @mousemove="onMouseMove" @mouseup="onMouseUp"
+                        @touchstart.passive="false" @touchstart="onTouchStart"
+                        @touchmove.passive="false" @touchmove="onTouchMove"
+                        @touchend="onTouchEnd"
+                        @contextmenu.prevent="()=>{}">
+                    </canvas>
+
+                    <!-- Subtle Brand Corner Badge on Canvas -->
+                    <div class="absolute top-2.5 left-2.5 pointer-events-none hidden sm:flex items-center gap-2 bg-slate-900/80 border border-sonanh-blue/60 px-2.5 py-1 rounded-lg backdrop-blur">
+                        <span class="w-2 h-2 rounded-full bg-sonanh-green animate-ping"></span>
+                        <span class="text-[10px] font-bold text-slate-300 tracking-wide">{{ db.settings.projectName || 'DỰ ÁN ĐIỆN MẶT TRỜI SƠN ANH' }}</span>
+                    </div>
+
+                    <!-- Floating Polygon Drawing Bar -->
+                    <div v-if="ui.tool==='draw_poly'" class="absolute top-2.5 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900/95 border border-sonanh-green p-2 rounded-xl shadow-2xl z-20 backdrop-blur flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                        <button @click="ui.orthoLock = !ui.orthoLock" :class="['px-2.5 py-1.5 rounded-lg font-bold border transition', ui.orthoLock ? 'bg-sonanh-green text-white border-green-400' : 'bg-slate-800 text-slate-300 border-slate-600']">
+                            📐 Góc 90°: {{ ui.orthoLock ? 'BẬT' : 'TẮT' }}
+                        </button>
+                        <div v-if="cvs.poly.length > 0" class="flex items-center gap-1 flex-1 min-w-[140px]">
+                            <input v-model.number="ui.exactLenInput" @keydown.enter.stop="applyExactPolyLength" type="number" step="0.1" placeholder="Nhập mét..." class="w-full bg-slate-800 border border-sky-500 rounded-lg px-2 py-1 text-white font-mono text-xs">
+                            <button @click="applyExactPolyLength" class="bg-sonanh-blue hover:bg-sonanh-blueLight text-white px-2.5 py-1 rounded-lg font-bold shrink-0">Đặt</button>
+                        </div>
+                        <button v-if="cvs.poly.length>=3" @click="closePolygon" class="bg-sonanh-green text-white px-2.5 py-1.5 rounded-lg font-bold shrink-0">
+                            ✓ Đóng Mái
+                        </button>
+                    </div>
+
+                    <!-- Floating Selected Object Action Bar -->
+                    <div v-if="ui.sel.length > 0 && ui.tool==='select'" class="absolute top-2.5 left-1/2 -translate-x-1/2 w-[95%] max-w-lg bg-slate-900/95 border border-slate-600 px-2.5 py-2 rounded-xl shadow-2xl flex flex-wrap items-center justify-between gap-1.5 text-xs z-20 backdrop-blur">
+                        <span class="font-bold text-sonanh-greenLight text-[11px] px-1">Chọn: {{ ui.sel.length }}</span>
+                        <div class="flex flex-wrap items-center gap-1">
+                            <button @click="rotateSelected" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 px-2 py-1 rounded border border-slate-600 font-medium">🔄 Xoay</button>
+                            <button @click="copySelected" class="bg-slate-800 hover:bg-slate-700 active:bg-slate-600 px-2 py-1 rounded border border-slate-600 font-medium">📋 Copy</button>
+                            <button v-if="ui.clipboard.length" @click="pasteClipboard" class="bg-sonanh-blue text-white px-2 py-1 rounded border border-blue-400/50 font-medium">📥 Dán</button>
+                            <button v-if="ui.sel.length>1" @click="alignSelected('row')" class="bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded border border-slate-600 font-medium" title="Dồn khít hàng ngang">⇿ Ngang</button>
+                            <button v-if="ui.sel.length>1" @click="alignSelected('col')" class="bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded border border-slate-600 font-medium" title="Dồn khít cột dọc">↕ Dọc</button>
+                            <button @click="ui.showDpad = !ui.showDpad" :class="['px-2 py-1 rounded border font-medium', ui.showDpad ? 'bg-sonanh-green text-white border-green-400 font-bold' : 'bg-slate-800 border-slate-600']">🕹️ Nhích</button>
+                            <button @click="deleteSelected" class="bg-red-600/20 text-red-400 border border-red-500/40 px-2 py-1 rounded font-bold">🗑 Xóa</button>
+                        </div>
+                    </div>
+
+                    <!-- On-Screen Touch D-Pad for Precision Nudge -->
+                    <div v-if="ui.sel.length > 0 && ui.showDpad" class="absolute bottom-16 lg:bottom-14 right-3 bg-slate-900/95 border border-slate-600 p-2.5 rounded-2xl shadow-2xl z-20 backdrop-blur flex flex-col items-center gap-1.5">
+                        <div class="flex items-center gap-2 text-[10px] text-slate-300 mb-0.5">
+                            <span>Bước nhích:</span>
+                            <button @click="ui.nudgeFast = !ui.nudgeFast" class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-bold text-sonanh-greenLight">
+                                {{ ui.nudgeFast ? '10 cm' : '1 cm' }}
+                            </button>
+                        </div>
+                        <button @click="nudgeSelected(0, -1)" class="w-10 h-9 bg-slate-800 active:bg-sonanh-green rounded-lg border border-slate-600 flex items-center justify-center font-bold text-sm">⬆️</button>
+                        <div class="flex gap-1.5">
+                            <button @click="nudgeSelected(-1, 0)" class="w-10 h-9 bg-slate-800 active:bg-sonanh-green rounded-lg border border-slate-600 flex items-center justify-center font-bold text-sm">⬅️</button>
+                            <button @click="nudgeSelected(0, 1)" class="w-10 h-9 bg-slate-800 active:bg-sonanh-green rounded-lg border border-slate-600 flex items-center justify-center font-bold text-sm">⬇️</button>
+                            <button @click="nudgeSelected(1, 0)" class="w-10 h-9 bg-slate-800 active:bg-sonanh-green rounded-lg border border-slate-600 flex items-center justify-center font-bold text-sm">➡️</button>
+                        </div>
+                    </div>
+
+                    <!-- Floating Quick String Selector Pill -->
+                    <div v-if="ui.tool === 'string'" class="absolute top-2.5 left-1/2 -translate-x-1/2 w-[94%] max-w-md bg-slate-900/95 border border-purple-500/60 p-2 rounded-xl shadow-2xl z-20 backdrop-blur flex items-center justify-between gap-1 overflow-x-auto">
+                        <button v-for="s in ui.stringDefs" :key="s.id" @click="ui.actStringId = s.id"
+                            :class="['px-2 py-1 rounded text-[11px] font-bold border shrink-0 flex items-center gap-1', ui.actStringId === s.id ? 'ring-2 ring-white scale-105' : 'opacity-75']"
+                            :style="{ backgroundColor: s.color + '44', borderColor: s.color }">
+                            <span>{{s.id}}</span>
+                            <span class="bg-slate-950/80 px-1 rounded text-[9px]">{{ stringGroups[s.id] || 0 }}</span>
+                        </button>
+                    </div>
+
+                    <!-- Bottom Status Bar -->
+                    <div class="absolute bottom-16 lg:bottom-3 left-3 right-3 flex justify-between items-end pointer-events-none">
+                        <div class="hidden md:block bg-slate-900/90 border border-slate-700 p-2 rounded-lg text-[10px] text-slate-300 space-y-0.5 pointer-events-auto shadow-lg backdrop-blur">
+                            <div class="font-bold text-sonanh-greenLight">Tổ Hợp Phím & Cảm Ứng:</div>
+                            <div>• <b>1 Ngón / Chuột trái</b>: Vẽ, chọn & kéo thả tự bắt dính (Khe 20mm / Mép mái)</div>
+                            <div>• <b>2 Ngón tay (Điện thoại)</b>: Chụm/tách để Zoom, trượt 2 ngón để di chuyển bản vẽ</div>
+                            <div>• <b>Phím R / Nút Xoay</b>: Xoay 90° | <b>Nút 🕹️ Nhích</b>: Tinh chỉnh 1cm / 10cm</div>
+                        </div>
+                        <div class="bg-slate-900/90 border border-slate-700 px-2.5 py-1 rounded-lg text-[11px] font-mono text-slate-300 pointer-events-auto flex items-center gap-2.5 shadow-lg ml-auto">
+                            <span class="text-sonanh-greenLight font-bold">{{ tech.kwp.toFixed(2) }} kWp ({{ cvs.panels.length }} PV)</span>
+                            <span>|</span>
+                            <button @click="clearCanvas" class="text-red-400 hover:underline font-sans font-bold">Xóa Bản Vẽ</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== RIGHT PANEL: BOM & ROI REPORT ==================== -->
+                <div :class="[
+                    'bg-slate-900 border-slate-800 flex flex-col z-40 text-xs shadow-2xl transition-transform duration-300 ease-out',
+                    'fixed inset-x-0 bottom-14 max-h-[80vh] rounded-t-2xl border-t lg:static lg:w-[340px] lg:max-h-none lg:rounded-none lg:border-t-0 lg:border-l lg:translate-y-0 shrink-0',
+                    mobileSheet === 'report' ? 'translate-y-0' : 'translate-y-[120%] lg:translate-y-0'
+                ]">
+                    <div class="lg:hidden flex justify-between items-center px-4 py-2.5 border-b border-slate-800 bg-sonanh-blue/40 rounded-t-2xl">
+                        <span class="font-bold text-sonanh-greenLight text-xs uppercase tracking-wider">📊 Bóc Tách Vật Tư & Hiệu Quả Đầu Tư</span>
+                        <button @click="mobileSheet = null" class="text-slate-300 hover:text-white bg-slate-800 px-2.5 py-0.5 rounded-full text-xs font-bold">Đóng ✕</button>
+                    </div>
+
+                    <!-- Top System Summary Card -->
+                    <div class="p-3.5 bg-gradient-to-br from-[#151f52] via-[#111840] to-slate-900 border-b border-sonanh-green/50">
+                        <div class="flex justify-between items-center text-[10px] text-slate-300 uppercase font-bold tracking-wider">
+                            <span>Công Suất Hệ Thống Điện Mặt Trời</span>
+                            <span class="bg-sonanh-green text-white px-1.5 py-0.5 rounded">{{ cvs.panels.length }} Tấm Pin</span>
+                        </div>
+                        <div class="mt-1.5 flex items-baseline justify-between">
+                            <div class="text-2xl sm:text-3xl font-extrabold text-sonanh-greenLight tracking-tight">
+                                {{ tech.kwp.toFixed(2) }} <span class="text-sm font-normal text-slate-300">kWp</span>
+                            </div>
+                            <div class="text-right text-[11px] text-sky-300 font-mono">
+                                Diện tích mái: {{ tech.roofArea.toFixed(1) }} m²
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-3 overflow-y-auto flex-1 space-y-4">
+                        <!-- 1. Kiến trúc Inverter & String -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                            <h3 class="font-bold text-[11px] text-sky-400 uppercase tracking-wider border-b border-slate-800 pb-1">1. Cấu Hình Biến Tần & String</h3>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-300">Biến tần ({{ activeInvDef.name }}):</span>
+                                <div class="flex items-center gap-1.5">
+                                    <label class="text-[10px] text-slate-400 flex items-center gap-0.5 cursor-pointer">
+                                        <input type="checkbox" v-model="design.manInv"> Sửa
+                                    </label>
+                                    <input v-if="design.manInv" v-model.number="design.invCount" type="number" min="1" class="w-12 bg-slate-900 border border-sky-500 rounded text-center py-0.5 font-bold text-white">
+                                    <span v-else class="font-bold text-amber-400 text-sm">{{ tech.inv }} máy</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-slate-300">Giới hạn áp an toàn / 1 String:</span>
+                                <span class="font-bold text-sonanh-greenLight">Tối đa {{ tech.maxStr }} tấm</span>
+                            </div>
+                            
+                            <div v-if="Object.keys(stringGroups).length > 0" class="pt-1 space-y-1">
+                                <div v-for="(count, sId) in stringGroups" :key="sId" class="flex justify-between items-center bg-slate-900 px-2.5 py-1 rounded border border-slate-800">
+                                    <span class="flex items-center gap-1.5 font-bold">
+                                        <span class="w-2.5 h-2.5 rounded-full" :style="{backgroundColor: getStringColor(sId)}"></span>
+                                        Chuỗi {{ sId }} ({{ (count * activePvDef.voc).toFixed(0) }}V Voc):
+                                    </span>
+                                    <span :class="['font-bold', count > tech.maxStr ? 'text-red-400 animate-pulse' : 'text-sonanh-greenLight']">
+                                        {{ count }} tấm {{ count > tech.maxStr ? '⚠️ Quá áp!' : '✓' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div v-else class="text-[11px] text-slate-400 italic bg-slate-900/50 p-2 rounded text-center">
+                                Đề xuất: Chia thành <b>{{ Math.ceil(cvs.panels.length / (tech.maxStr || 1)) }} chuỗi</b> (~{{ Math.ceil(cvs.panels.length / Math.max(1, Math.ceil(cvs.panels.length / (tech.maxStr || 1)))) }} tấm/chuỗi).
+                            </div>
+                        </div>
+
+                        <!-- 2. Bóc tách Vật tư Cơ khí (BOM) -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                            <div class="flex justify-between items-center border-b border-slate-800 pb-1">
+                                <h3 class="font-bold text-[11px] text-sonanh-greenLight uppercase tracking-wider">2. Bóc Tách Vật Tư Khung Giàn (BOM)</h3>
+                                <span class="text-[10px] bg-sonanh-green/20 text-sonanh-greenLight px-1.5 py-0.5 rounded border border-sonanh-green/40">{{ bom.blocks }} dãy pin</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[11px]">
+                                <div class="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-400">Kẹp biên:</span>
+                                    <b class="text-white text-sm">{{ bom.end }} <span class="text-[10px] font-normal text-slate-400">cái</span></b>
+                                </div>
+                                <div class="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-400">Kẹp giữa:</span>
+                                    <b class="text-white text-sm">{{ bom.mid }} <span class="text-[10px] font-normal text-slate-400">cái</span></b>
+                                </div>
+                                <div class="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-400">Rail nhôm 4.2m:</span>
+                                    <b class="text-amber-400 text-sm">{{ bom.rails42 }} <span class="text-[10px] font-normal text-slate-400">thanh</span></b>
+                                </div>
+                                <div class="bg-slate-900 p-2 rounded border border-slate-800 flex justify-between items-center">
+                                    <span class="text-slate-400">Nối Rail nhôm:</span>
+                                    <b class="text-sky-400 text-sm">{{ bom.splices }} <span class="text-[10px] font-normal text-slate-400">bộ</span></b>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900 p-2 rounded border border-slate-800 space-y-1 text-[11px]">
+                                <div class="flex justify-between">
+                                    <span class="text-slate-400">Chân L / Pát Z bắt mái:</span>
+                                    <b class="text-white">{{ bom.lFeet }} cái</b>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-400">Khung sắt hộp mạ kẽm dự kiến:</span>
+                                    <b class="text-sky-400">{{ Math.ceil(bom.iron) }} mét</b>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-slate-400">Chiều cao nâng chân sau (10°):</span>
+                                    <b class="text-amber-300">{{ bom.tiltHeight.toFixed(2) }} mét</b>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. Phân tích Tài chính & Hoàn vốn -->
+                        <div class="bg-slate-950/70 p-3 rounded-xl border border-sonanh-green/40 space-y-2">
+                            <h3 class="font-bold text-[11px] text-sonanh-greenLight uppercase tracking-wider border-b border-slate-800 pb-1">3. Bài Toán Kinh Tế & Hoàn Vốn</h3>
+                            <div class="space-y-1.5 text-[11px]">
+                                <div class="flex justify-between text-slate-300">
+                                    <span>Tổng tiền điện hiện tại:</span>
+                                    <b class="text-white">{{ fmt(finRes.oldVnd) }}/tháng</b>
+                                </div>
+                                <div class="flex justify-between text-slate-400">
+                                    <span>Điện năng tiêu thụ (Nội suy):</span>
+                                    <b class="text-slate-200">{{ Math.round(finRes.oldKwh).toLocaleString('vi-VN') }} kWh/tháng</b>
+                                </div>
+                                <div class="flex justify-between bg-sonanh-green/15 border border-sonanh-green/40 p-1.5 rounded text-sonanh-greenLight">
+                                    <span>Sản lượng Điện Mặt Trời:</span>
+                                    <b class="text-white text-xs">{{ Math.round(finRes.solKwh).toLocaleString('vi-VN') }} kWh/tháng</b>
+                                </div>
+                                <div class="flex justify-between text-slate-400">
+                                    <span>Điện lưới còn phải mua:</span>
+                                    <b class="text-slate-200">{{ Math.round(finRes.remKwh).toLocaleString('vi-VN') }} kWh/tháng</b>
+                                </div>
+                                <div class="flex justify-between text-slate-300 border-b border-slate-800 pb-1.5">
+                                    <span>Tiền điện mới dự kiến:</span>
+                                    <b class="text-amber-400">{{ fmt(finRes.newVnd) }}/tháng</b>
+                                </div>
+                                <div class="flex justify-between items-baseline pt-1">
+                                    <span class="font-bold text-sonanh-greenLight">TIẾT KIỆM HÀNG THÁNG:</span>
+                                    <b class="text-base text-sonanh-greenLight">{{ fmt(finRes.save) }}</b>
+                                </div>
+                            </div>
+
+                            <div class="pt-2 border-t border-slate-800">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="font-bold text-slate-200">Thời gian hoàn vốn (ROI):</span>
+                                    <span class="text-sm font-extrabold text-white bg-sonanh-green px-2.5 py-0.5 rounded shadow">
+                                        {{ finRes.roi > 0 ? finRes.roi.toFixed(1) + ' năm' : 'N/A' }}
+                                    </span>
+                                </div>
+                                <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden border border-slate-800">
+                                    <div class="bg-gradient-to-r from-sonanh-blueLight to-sonanh-greenLight h-full transition-all duration-300" :style="{width: finRes.roi > 0 ? Math.min(100, (5 / finRes.roi) * 100) + '%' : '0%'}"></div>
+                                </div>
+                            </div>
+
+                            <button @click="exportBomReportExcel" class="w-full mt-2 bg-sonanh-blue hover:bg-sonanh-blueLight text-white py-2 rounded-lg font-bold border border-blue-400/30 shadow flex items-center justify-center gap-1.5">
+                                📊 Xuất Báo Giá & BOM Ra File Excel (.xlsx)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== MOBILE BOTTOM NAVIGATION BAR (< 1024px) ==================== -->
+                <nav class="lg:hidden fixed bottom-0 inset-x-0 h-14 bg-slate-900 border-t-2 border-sonanh-green z-50 grid grid-cols-5 text-[10px] font-medium">
+                    <button @click="mobileSheet = (mobileSheet === 'tools' ? null : 'tools')" :class="['flex flex-col items-center justify-center gap-0.5', mobileSheet === 'tools' ? 'text-sonanh-greenLight bg-slate-800 font-bold' : 'text-slate-400']">
+                        <span class="text-base leading-none">⚙️</span>
+                        <span>Cấu Hình</span>
+                    </button>
+                    <button @click="setTool('select'); mobileSheet = null" :class="['flex flex-col items-center justify-center gap-0.5', ui.tool === 'select' && !mobileSheet ? 'text-sonanh-greenLight bg-slate-800/70 font-bold' : 'text-slate-400']">
+                        <span class="text-base leading-none">↖</span>
+                        <span>Chọn/Kéo</span>
+                    </button>
+                    <button @click="setTool('pan'); mobileSheet = null" :class="['flex flex-col items-center justify-center gap-0.5', ui.tool === 'pan' && !mobileSheet ? 'text-sonanh-greenLight bg-slate-800/70 font-bold' : 'text-slate-400']">
+                        <span class="text-base leading-none">✋</span>
+                        <span>Di Chuyển</span>
+                    </button>
+                    <button @click="setTool('string'); mobileSheet = null" :class="['flex flex-col items-center justify-center gap-0.5', ui.tool === 'string' && !mobileSheet ? 'text-purple-400 bg-slate-800/70 font-bold' : 'text-slate-400']">
+                        <span class="text-base leading-none">🔗</span>
+                        <span>String</span>
+                    </button>
+                    <button @click="mobileSheet = (mobileSheet === 'report' ? null : 'report')" :class="['flex flex-col items-center justify-center gap-0.5 relative', mobileSheet === 'report' ? 'text-sonanh-greenLight bg-slate-800 font-bold' : 'text-slate-400']">
+                        <span class="text-base leading-none">📊</span>
+                        <span>Báo Cáo</span>
+                        <span v-if="cvs.panels.length>0" class="absolute top-1 right-2 bg-sonanh-green text-white text-[8px] px-1 rounded-full font-bold">{{cvs.panels.length}}</span>
+                    </button>
+                </nav>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, watch, onMounted, onUnmounted } = Vue;
+
+        createApp({
+            setup() {
+                const activeTab = ref('design');
+                const mobileSheet = ref(null);
+                const SCALE = 40; // 1m = 40px
+                const GAP_M = 0.02; // Khe hở kẹp giữa tiêu chuẩn = 20mm
+
+                // 1. DATABASE MẶC ĐỊNH CỦA SƠN ANH
+                const db = reactive({
+                    settings: {
+                        projectName: 'BẢN VẼ THIẾT KẾ ĐIỆN MẶT TRỜI SƠN ANH',
+                        sunHours: 6.5
+                    },
+                    tariffs: {
+                        tiered: [
+                            { size: 50, price: 1806 },
+                            { size: 50, price: 1866 },
+                            { size: 100, price: 2167 },
+                            { size: 100, price: 2729 },
+                            { size: 100, price: 3050 },
+                            { size: Infinity, price: 3151 }
+                        ],
+                        tou: { normal: 2844, peak: 4736, offpeak: 1738 }
+                    },
+                    panels: [
+                        { name: 'Tấm pin HSM-BD66-GR655 (655W)', length: 2384, width: 1303, pmax: 655, voc: 45.6 },
+                        { name: 'Canadian Solar 625W', length: 2382, width: 1134, pmax: 625, voc: 48.2 },
+                        { name: 'Trina Solar Vertex 720W', length: 2384, width: 1303, pmax: 720, voc: 49.0 }
+                    ],
+                    inverters: [
+                        { name: 'Biến tần Hybrid X1-LITE-12.0-LV', power: 12, maxDc: 550 },
+                        { name: 'SolaX X3-Hybrid 15.0-D', power: 15, maxDc: 1000 },
+                        { name: 'GoodWe 50kW GW50K-ET-10', power: 50, maxDc: 1000 }
+                    ]
+                });
+
+                // 2. DESIGN & FINANCE STATE
+                const design = reactive({
+                    pvIdx: 0,
+                    invIdx: 0,
+                    ori: 'portrait',
+                    margin: 0.1,
+                    obsW: 0.6,
+                    obsH: 4.0,
+                    autoCarve: true,
+                    manInv: false,
+                    invCount: 1
+                });
+
+                const fin = reactive({
+                    totalCost: 220000000,
+                    type: 'tiered',
+                    numHH: 2,
+                    bills: [7500000, 7500000],
+                    curRatio: { n: 54, p: 16, o: 30 },
+                    solRatio: { n: 70, p: 30 }
+                });
+
+                // 3. CANVAS OBJECTS
+                const cvs = reactive({
+                    poly: [
+                        { x: 120, y: 80 },
+                        { x: 120 + 12 * SCALE, y: 80 },
+                        { x: 120 + 12 * SCALE, y: 80 + 7.6 * SCALE },
+                        { x: 120 + 9.5 * SCALE, y: 80 + 7.6 * SCALE },
+                        { x: 120 + 9.5 * SCALE, y: 80 + 9.8 * SCALE },
+                        { x: 120, y: 80 + 9.8 * SCALE }
+                    ],
+                    polyClosed: true,
+                    panels: [],
+                    obs: []
+                });
+
+                const hist = reactive({ undoStack: [], redoStack: [] });
+                const vp = reactive({ x: 30, y: 20, scale: 1 });
+
+                const ui = reactive({
+                    tool: 'select',
+                    orthoLock: true,
+                    snapEnabled: true,
+                    showDpad: false,
+                    nudgeFast: false,
+                    toast: null,
+                    stringDefs: [
+                        { id: 'S1', color: '#16a34a' },
+                        { id: 'S2', color: '#3b82f6' },
+                        { id: 'S3', color: '#eab308' },
+                        { id: 'S4', color: '#ef4444' },
+                        { id: 'S5', color: '#f97316' },
+                        { id: 'S6', color: '#a855f7' },
+                        { id: 'S7', color: '#06b6d4' },
+                        { id: 'S8', color: '#ec4899' }
+                    ],
+                    actStringId: 'S1',
+                    sel: [],
+                    isDrag: false,
+                    isSweep: false,
+                    isRectDraw: false,
+                    isSpace: false,
+                    isShift: false,
+                    isNudging: false,
+                    mx: 0, my: 0, sx: 0, sy: 0,
+                    dragStartMouse: { x: 0, y: 0 },
+                    dragStartPos: [],
+                    clipboard: [],
+                    snapGuides: [],
+                    exactLenInput: null,
+                    touchDist: 0,
+                    touchMid: { x: 0, y: 0 }
+                });
+
+                const showToast = (msg) => {
+                    ui.toast = msg;
+                    setTimeout(() => { if (ui.toast === msg) ui.toast = null; }, 3500);
+                };
+
+                const canvasEl = ref(null);
+                const canvasWrap = ref(null);
+                let ctx = null;
+                let dpr = 1;
+                const isPanning = ref(false);
+
+                // LIFECYCLE
+                onMounted(() => {
+                    const savedDb = localStorage.getItem('sonAnhSolar_master_db');
+                    if (savedDb) {
+                        try { Object.assign(db, JSON.parse(savedDb)); } catch(e) {}
+                    }
+                    window.addEventListener('resize', resizeCanvas);
+                    window.addEventListener('keydown', handleKeydown);
+                    window.addEventListener('keyup', handleKeyup);
+                    setTimeout(() => {
+                        resizeCanvas();
+                        if (cvs.panels.length === 0) autoFill();
+                        fitToScreen();
+                        renderLoop();
+                    }, 80);
+                });
+
+                onUnmounted(() => {
+                    window.removeEventListener('resize', resizeCanvas);
+                    window.removeEventListener('keydown', handleKeydown);
+                    window.removeEventListener('keyup', handleKeyup);
+                });
+
+                watch(db, val => localStorage.setItem('sonAnhSolar_master_db', JSON.stringify(val)), { deep: true });
+                watch(activeTab, val => {
+                    if (val === 'design') setTimeout(() => { resizeCanvas(); fitToScreen(); }, 60);
+                });
+
+                // HISTORY UNDO / REDO
+                const pushHist = () => {
+                    hist.undoStack.push(JSON.stringify({ poly: cvs.poly, polyClosed: cvs.polyClosed, panels: cvs.panels, obs: cvs.obs }));
+                    if (hist.undoStack.length > 35) hist.undoStack.shift();
+                    hist.redoStack = [];
+                };
+                const undo = () => {
+                    if (!hist.undoStack.length) return;
+                    hist.redoStack.push(JSON.stringify({ poly: cvs.poly, polyClosed: cvs.polyClosed, panels: cvs.panels, obs: cvs.obs }));
+                    const prev = JSON.parse(hist.undoStack.pop());
+                    cvs.poly = prev.poly; cvs.polyClosed = prev.polyClosed; cvs.panels = prev.panels; cvs.obs = prev.obs || [];
+                    ui.sel = [];
+                };
+                const redo = () => {
+                    if (!hist.redoStack.length) return;
+                    hist.undoStack.push(JSON.stringify({ poly: cvs.poly, polyClosed: cvs.polyClosed, panels: cvs.panels, obs: cvs.obs }));
+                    const next = JSON.parse(hist.redoStack.pop());
+                    cvs.poly = next.poly; cvs.polyClosed = next.polyClosed; cvs.panels = next.panels; cvs.obs = next.obs || [];
+                    ui.sel = [];
+                };
+
+                // HIGH-DPI CANVAS SETUP
+                const resizeCanvas = () => {
+                    if (!canvasEl.value || !canvasWrap.value) return;
+                    dpr = window.devicePixelRatio || 1;
+                    const w = canvasWrap.value.clientWidth;
+                    const h = canvasWrap.value.clientHeight;
+                    canvasEl.value.width = w * dpr;
+                    canvasEl.value.height = h * dpr;
+                    ctx = canvasEl.value.getContext('2d');
+                };
+
+                const fitToScreen = () => {
+                    if (!canvasWrap.value || cvs.poly.length === 0) return;
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    cvs.poly.forEach(p => { minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y); });
+                    const polyW = Math.max(80, maxX - minX);
+                    const polyH = Math.max(80, maxY - minY);
+                    const wrapW = canvasWrap.value.clientWidth;
+                    const wrapH = canvasWrap.value.clientHeight;
+                    const pad = wrapW < 640 ? 60 : 140;
+                    const scaleX = (wrapW - pad) / polyW;
+                    const scaleY = (wrapH - pad - 40) / polyH;
+                    vp.scale = Math.min(Math.max(0.25, Math.min(scaleX, scaleY)), 2.5);
+                    vp.x = (wrapW - polyW * vp.scale) / 2 - minX * vp.scale;
+                    vp.y = (wrapH - polyH * vp.scale) / 2 - minY * vp.scale;
+                };
+
+                const clientToWorld = (clientX, clientY) => {
+                    const rect = canvasEl.value.getBoundingClientRect();
+                    return {
+                        x: (clientX - rect.left - vp.x) / vp.scale,
+                        y: (clientY - rect.top - vp.y) / vp.scale
+                    };
+                };
+
+                const onWheel = (e) => {
+                    const rect = canvasEl.value.getBoundingClientRect();
+                    const ox = e.clientX - rect.left;
+                    const oy = e.clientY - rect.top;
+                    const d = -e.deltaY * 0.0012;
+                    const ns = Math.min(Math.max(0.2, vp.scale * (1 + d)), 5);
+                    vp.x -= (ox - vp.x) * (ns / vp.scale - 1);
+                    vp.y -= (oy - vp.y) * (ns / vp.scale - 1);
+                    vp.scale = ns;
+                };
+
+                // GEOMETRY HELPERS
+                const ptInPoly = (x, y, poly) => {
+                    let inside = false;
+                    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                        const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+                        const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                        if (intersect) inside = !inside;
+                    }
+                    return inside;
+                };
+
+                const ptToSegmentDist = (px, py, x1, y1, x2, y2) => {
+                    const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+                    const dot = A * C + B * D;
+                    const lenSq = C * C + D * D;
+                    let param = lenSq !== 0 ? dot / lenSq : -1;
+                    let xx, yy;
+                    if (param < 0) { xx = x1; yy = y1; }
+                    else if (param > 1) { xx = x2; yy = y2; }
+                    else { xx = x1 + param * C; yy = y1 + param * D; }
+                    return Math.hypot(px - xx, py - yy);
+                };
+
+                const isRectInsidePoly = (cx, cy, w, h, poly, marginPx = 0) => {
+                    const hw = w / 2, hh = h / 2;
+                    const corners = [
+                        { x: cx - hw, y: cy - hh },
+                        { x: cx + hw, y: cy - hh },
+                        { x: cx + hw, y: cy + hh },
+                        { x: cx - hw, y: cy + hh }
+                    ];
+                    for (let c of corners) {
+                        if (!ptInPoly(c.x, c.y, poly)) return false;
+                        if (marginPx > 0) {
+                            for (let i = 0; i < poly.length; i++) {
+                                const p1 = poly[i], p2 = poly[(i + 1) % poly.length];
+                                if (ptToSegmentDist(c.x, c.y, p1.x, p1.y, p2.x, p2.y) < marginPx - 0.5) return false;
+                            }
+                        }
+                    }
+                    return true;
+                };
+
+                const ptInRect = (px, py, r) => Math.abs(px - r.cx) <= r.w / 2 && Math.abs(py - r.cy) <= r.h / 2;
+                const rectIntersect = (r1, r2) => Math.abs(r1.cx - r2.cx) < (r1.w / 2 + r2.w / 2 - 0.2) && Math.abs(r1.cy - r2.cy) < (r1.h / 2 + r2.h / 2 - 0.2);
+
+                // UNIFIED POINTER & TOUCH HANDLERS
+                const setTool = (t) => {
+                    ui.tool = t;
+                    ui.snapGuides = [];
+                    if (t === 'draw_poly') {
+                        pushHist();
+                        cvs.poly = [];
+                        cvs.polyClosed = false;
+                        ui.sel = [];
+                    }
+                };
+
+                const closePolygon = () => {
+                    if (cvs.poly.length >= 3) {
+                        cvs.polyClosed = true;
+                        ui.tool = 'select';
+                    }
+                };
+
+                const applyExactPolyLength = () => {
+                    if (ui.tool !== 'draw_poly' || cvs.poly.length === 0 || !ui.exactLenInput || ui.exactLenInput <= 0) return;
+                    const last = cvs.poly[cvs.poly.length - 1];
+                    let dx = ui.mx - last.x, dy = ui.my - last.y;
+                    if (Math.hypot(dx, dy) < 0.001) { dx = 1; dy = 0; }
+                    const ang = Math.atan2(dy, dx);
+                    const distPx = ui.exactLenInput * SCALE;
+                    const nx = last.x + Math.cos(ang) * distPx;
+                    const ny = last.y + Math.sin(ang) * distPx;
+                    cvs.poly.push({ x: nx, y: ny });
+                    ui.mx = nx; ui.my = ny;
+                    ui.exactLenInput = null;
+                };
+
+                const handlePointerStart = (worldPos, clientX, clientY, isShiftKey = false, isRightBtn = false) => {
+                    if (isRightBtn || ui.isSpace || ui.tool === 'pan') {
+                        isPanning.value = true;
+                        ui.sx = clientX;
+                        ui.sy = clientY;
+                        return;
+                    }
+
+                    let w = { ...worldPos };
+                    if (ui.tool === 'draw_poly' && (isShiftKey || ui.isShift || ui.orthoLock) && cvs.poly.length > 0) {
+                        const last = cvs.poly[cvs.poly.length - 1];
+                        if (Math.abs(w.x - last.x) > Math.abs(w.y - last.y)) w.y = last.y;
+                        else w.x = last.x;
+                    }
+
+                    ui.mx = w.x; ui.my = w.y; ui.sx = w.x; ui.sy = w.y;
+
+                    if (ui.tool === 'draw_poly') {
+                        if (cvs.poly.length >= 3 && Math.hypot(w.x - cvs.poly[0].x, w.y - cvs.poly[0].y) < 18 / vp.scale) {
+                            closePolygon();
+                            return;
+                        }
+                        cvs.poly.push({ x: w.x, y: w.y });
+                    } else if (ui.tool === 'draw_rect') {
+                        pushHist();
+                        ui.isRectDraw = true;
+                    } else if (ui.tool === 'add_panel') {
+                        pushHist();
+                        const def = db.panels[design.pvIdx] || db.panels[0];
+                        let wPx = (def.width / 1000) * SCALE, hPx = (def.length / 1000) * SCALE;
+                        if (design.ori === 'landscape') [wPx, hPx] = [hPx, wPx];
+                        const newP = { id: 'p_' + Date.now() + Math.random(), cx: w.x, cy: w.y, w: wPx, h: hPx, str: null, pvIdx: design.pvIdx, type: 'panel' };
+                        cvs.panels.push(newP);
+                        ui.sel = [newP.id];
+                        ui.tool = 'select';
+                    } else if (ui.tool === 'add_obs') {
+                        pushHist();
+                        const oW = design.obsW * SCALE, oH = design.obsH * SCALE;
+                        const newObs = { id: 'obs_' + Date.now() + Math.random(), cx: w.x, cy: w.y, w: oW, h: oH, type: 'obs' };
+                        cvs.obs.push(newObs);
+                        if (design.autoCarve) carvePanelsByObstacles();
+                        ui.sel = [newObs.id];
+                        ui.tool = 'select';
+                    } else {
+                        const allObjs = [...cvs.panels, ...cvs.obs];
+                        const hit = [...allObjs].reverse().find(p => ptInRect(w.x, w.y, p));
+
+                        if (ui.tool === 'string') {
+                            if (hit && hit.type === 'panel') {
+                                pushHist();
+                                hit.str = hit.str === ui.actStringId ? null : ui.actStringId;
+                            } else {
+                                ui.isSweep = true;
+                            }
+                        } else if (ui.tool === 'select') {
+                            if (hit) {
+                                if (!isShiftKey && !ui.sel.includes(hit.id)) ui.sel = [hit.id];
+                                else if (isShiftKey) {
+                                    if (ui.sel.includes(hit.id)) ui.sel = ui.sel.filter(id => id !== hit.id);
+                                    else ui.sel.push(hit.id);
+                                }
+                                pushHist();
+                                ui.isDrag = true;
+                                ui.dragStartMouse = { x: w.x, y: w.y };
+                                ui.dragStartPos = ui.sel.map(id => {
+                                    const obj = allObjs.find(x => x.id === id);
+                                    return { id, cx: obj.cx, cy: obj.cy };
+                                });
+                            } else {
+                                ui.sel = [];
+                                ui.isSweep = true;
+                            }
+                        }
+                    }
+                };
+
+                const handlePointerMove = (worldPos, clientX, clientY, isAltKey = false, isShiftKey = false) => {
+                    if (isPanning.value) {
+                        vp.x += clientX - ui.sx;
+                        vp.y += clientY - ui.sy;
+                        ui.sx = clientX;
+                        ui.sy = clientY;
+                        return;
+                    }
+                    let w = { ...worldPos };
+
+                    if (ui.tool === 'draw_poly' && (isShiftKey || ui.isShift || ui.orthoLock) && cvs.poly.length > 0) {
+                        const last = cvs.poly[cvs.poly.length - 1];
+                        if (Math.abs(w.x - last.x) > Math.abs(w.y - last.y)) w.y = last.y;
+                        else w.x = last.x;
+                    }
+                    ui.mx = w.x; ui.my = w.y;
+
+                    if (ui.isDrag && ui.sel.length > 0) {
+                        const rawDx = w.x - ui.dragStartMouse.x;
+                        const rawDy = w.y - ui.dragStartMouse.y;
+                        let snapDx = rawDx, snapDy = rawDy;
+                        ui.snapGuides = [];
+
+                        const allObjs = [...cvs.panels, ...cvs.obs];
+                        const leadId = ui.sel[0];
+                        const lead = allObjs.find(x => x.id === leadId);
+                        const leadOrig = ui.dragStartPos.find(x => x.id === leadId);
+
+                        if (lead && leadOrig && ui.snapEnabled && !isAltKey) {
+                            const tempCx = leadOrig.cx + rawDx;
+                            const tempCy = leadOrig.cy + rawDy;
+                            const thresh = 11 / vp.scale;
+                            const gapPx = GAP_M * SCALE;
+
+                            let minDiffX = thresh, minDiffY = thresh;
+                            let guideX = null, guideY = null;
+
+                            const statics = allObjs.filter(p => !ui.sel.includes(p.id));
+                            for (let sp of statics) {
+                                const useGap = (lead.type === 'panel' && sp.type === 'panel') ? gapPx : 0;
+                                const xCandidates = [
+                                    { val: sp.cx, guide: sp.cx },
+                                    { val: sp.cx - sp.w / 2 + lead.w / 2, guide: sp.cx - sp.w / 2 },
+                                    { val: sp.cx + sp.w / 2 - lead.w / 2, guide: sp.cx + sp.w / 2 },
+                                    { val: sp.cx + sp.w / 2 + useGap + lead.w / 2, guide: sp.cx + sp.w / 2 + useGap / 2 },
+                                    { val: sp.cx - sp.w / 2 - useGap - lead.w / 2, guide: sp.cx - sp.w / 2 - useGap / 2 }
+                                ];
+                                for (let c of xCandidates) {
+                                    const diff = Math.abs(tempCx - c.val);
+                                    if (diff < minDiffX) {
+                                        minDiffX = diff;
+                                        snapDx = c.val - leadOrig.cx;
+                                        guideX = { x1: c.guide, y1: Math.min(tempCy, sp.cy) - 40, x2: c.guide, y2: Math.max(tempCy, sp.cy) + 40 };
+                                    }
+                                }
+
+                                const yCandidates = [
+                                    { val: sp.cy, guide: sp.cy },
+                                    { val: sp.cy - sp.h / 2 + lead.h / 2, guide: sp.cy - sp.h / 2 },
+                                    { val: sp.cy + sp.h / 2 - lead.h / 2, guide: sp.cy + sp.h / 2 },
+                                    { val: sp.cy + sp.h / 2 + useGap + lead.h / 2, guide: sp.cy + sp.h / 2 + useGap / 2 },
+                                    { val: sp.cy - sp.h / 2 - useGap - lead.h / 2, guide: sp.cy - sp.h / 2 - useGap / 2 }
+                                ];
+                                for (let c of yCandidates) {
+                                    const diff = Math.abs(tempCy - c.val);
+                                    if (diff < minDiffY) {
+                                        minDiffY = diff;
+                                        snapDy = c.val - leadOrig.cy;
+                                        guideY = { x1: Math.min(tempCx, sp.cx) - 40, y1: c.guide, x2: Math.max(tempCx, sp.cx) + 40, y2: c.guide };
+                                    }
+                                }
+                            }
+
+                            for (let i = 0; i < cvs.poly.length; i++) {
+                                const p1 = cvs.poly[i], p2 = cvs.poly[(i + 1) % cvs.poly.length];
+                                if (Math.abs(p1.x - p2.x) < 3) {
+                                    const edgeX = (p1.x + p2.x) / 2;
+                                    const dLeft = Math.abs((tempCx - lead.w / 2) - edgeX);
+                                    const dRight = Math.abs((tempCx + lead.w / 2) - edgeX);
+                                    if (dLeft < minDiffX) { minDiffX = dLeft; snapDx = edgeX + lead.w / 2 - leadOrig.cx; guideX = { x1: edgeX, y1: Math.min(p1.y, p2.y), x2: edgeX, y2: Math.max(p1.y, p2.y) }; }
+                                    if (dRight < minDiffX) { minDiffX = dRight; snapDx = edgeX - lead.w / 2 - leadOrig.cx; guideX = { x1: edgeX, y1: Math.min(p1.y, p2.y), x2: edgeX, y2: Math.max(p1.y, p2.y) }; }
+                                }
+                                if (Math.abs(p1.y - p2.y) < 3) {
+                                    const edgeY = (p1.y + p2.y) / 2;
+                                    const dTop = Math.abs((tempCy - lead.h / 2) - edgeY);
+                                    const dBot = Math.abs((tempCy + lead.h / 2) - edgeY);
+                                    if (dTop < minDiffY) { minDiffY = dTop; snapDy = edgeY + lead.h / 2 - leadOrig.cy; guideY = { x1: Math.min(p1.x, p2.x), y1: edgeY, x2: Math.max(p1.x, p2.x), y2: edgeY }; }
+                                    if (dBot < minDiffY) { minDiffY = dBot; snapDy = edgeY - lead.h / 2 - leadOrig.cy; guideY = { x1: Math.min(p1.x, p2.x), y1: edgeY, x2: Math.max(p1.x, p2.x), y2: edgeY }; }
+                                }
+                            }
+
+                            if (guideX) ui.snapGuides.push(guideX);
+                            if (guideY) ui.snapGuides.push(guideY);
+                        }
+
+                        ui.dragStartPos.forEach(start => {
+                            const obj = allObjs.find(x => x.id === start.id);
+                            if (obj) {
+                                obj.cx = start.cx + snapDx;
+                                obj.cy = start.cy + snapDy;
+                            }
+                        });
+                    }
+                };
+
+                const handlePointerEnd = () => {
+                    if (isPanning.value) { isPanning.value = false; return; }
+                    if (ui.isRectDraw) {
+                        ui.isRectDraw = false;
+                        const x1 = Math.min(ui.sx, ui.mx), x2 = Math.max(ui.sx, ui.mx);
+                        const y1 = Math.min(ui.sy, ui.my), y2 = Math.max(ui.sy, ui.my);
+                        if (x2 - x1 > 20 && y2 - y1 > 20) {
+                            cvs.poly = [{ x: x1, y: y1 }, { x: x2, y: y1 }, { x: x2, y: y2 }, { x: x1, y: y2 }];
+                            cvs.polyClosed = true;
+                            ui.tool = 'select';
+                        }
+                        return;
+                    }
+                    if (ui.isDrag) {
+                        ui.isDrag = false;
+                        ui.snapGuides = [];
+                        if (design.autoCarve && cvs.obs.some(o => ui.sel.includes(o.id))) {
+                            carvePanelsByObstacles();
+                        }
+                    }
+                    if (ui.isSweep) {
+                        ui.isSweep = false;
+                        const minX = Math.min(ui.sx, ui.mx), maxX = Math.max(ui.sx, ui.mx);
+                        const minY = Math.min(ui.sy, ui.my), maxY = Math.max(ui.sy, ui.my);
+                        const allObjs = [...cvs.panels, ...cvs.obs];
+                        const inBox = allObjs.filter(p => p.cx >= minX && p.cx <= maxX && p.cy >= minY && p.cy <= maxY);
+                        if (ui.tool === 'select') ui.sel = inBox.map(x => x.id);
+                        if (ui.tool === 'string' && inBox.length > 0) {
+                            pushHist();
+                            inBox.filter(x => x.type === 'panel').forEach(x => x.str = ui.actStringId);
+                        }
+                    }
+                };
+
+                // DESKTOP MOUSE WRAPPERS
+                const onMouseDown = (e) => handlePointerStart(clientToWorld(e.clientX, e.clientY), e.clientX, e.clientY, e.shiftKey, e.button === 2);
+                const onMouseMove = (e) => handlePointerMove(clientToWorld(e.clientX, e.clientY), e.clientX, e.clientY, e.altKey, e.shiftKey);
+                const onMouseUp = () => handlePointerEnd();
+
+                // MOBILE MULTI-TOUCH WRAPPERS
+                const onTouchStart = (e) => {
+                    e.preventDefault();
+                    if (e.touches.length === 2) {
+                        ui.isDrag = false;
+                        ui.isSweep = false;
+                        isPanning.value = false;
+                        const t1 = e.touches[0], t2 = e.touches[1];
+                        ui.touchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                        const rect = canvasEl.value.getBoundingClientRect();
+                        ui.touchMid = {
+                            x: (t1.clientX + t2.clientX) / 2 - rect.left,
+                            y: (t1.clientY + t2.clientY) / 2 - rect.top
+                        };
+                        return;
+                    }
+                    if (e.touches.length === 1) {
+                        const t = e.touches[0];
+                        handlePointerStart(clientToWorld(t.clientX, t.clientY), t.clientX, t.clientY, false, false);
+                    }
+                };
+
+                const onTouchMove = (e) => {
+                    e.preventDefault();
+                    if (e.touches.length === 2) {
+                        const t1 = e.touches[0], t2 = e.touches[1];
+                        const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                        const rect = canvasEl.value.getBoundingClientRect();
+                        const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+                        const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+                        if (ui.touchDist > 10) {
+                            const ratio = dist / ui.touchDist;
+                            const ns = Math.min(Math.max(0.2, vp.scale * ratio), 5);
+                            vp.x -= (midX - vp.x) * (ns / vp.scale - 1);
+                            vp.y -= (midY - vp.y) * (ns / vp.scale - 1);
+                            vp.scale = ns;
+                        }
+                        vp.x += midX - ui.touchMid.x;
+                        vp.y += midY - ui.touchMid.y;
+                        ui.touchDist = dist;
+                        ui.touchMid = { x: midX, y: midY };
+                        return;
+                    }
+                    if (e.touches.length === 1) {
+                        const t = e.touches[0];
+                        handlePointerMove(clientToWorld(t.clientX, t.clientY), t.clientX, t.clientY, false, false);
+                    }
+                };
+
+                const onTouchEnd = (e) => {
+                    e.preventDefault();
+                    if (e.touches.length < 2) ui.touchDist = 0;
+                    if (e.touches.length === 0) handlePointerEnd();
+                };
+
+                // OBJECT MANIPULATION ACTIONS
+                const carvePanelsByObstacles = () => {
+                    if (!cvs.obs.length) return;
+                    cvs.panels = cvs.panels.filter(p => !cvs.obs.some(o => rectIntersect(p, o)));
+                };
+
+                const rotateSelected = () => {
+                    if (!ui.sel.length) return;
+                    pushHist();
+                    [...cvs.panels, ...cvs.obs].filter(p => ui.sel.includes(p.id)).forEach(p => {
+                        const tmp = p.w; p.w = p.h; p.h = tmp;
+                    });
+                };
+
+                const copySelected = () => {
+                    if (!ui.sel.length) return;
+                    const allObjs = [...cvs.panels, ...cvs.obs];
+                    ui.clipboard = allObjs.filter(p => ui.sel.includes(p.id)).map(p => ({ ...p }));
+                    showToast(`Đã copy ${ui.clipboard.length} đối tượng`);
+                };
+
+                const pasteClipboard = () => {
+                    if (!ui.clipboard.length) return;
+                    pushHist();
+                    const newSel = [];
+                    const offset = (GAP_M + 0.35) * SCALE;
+                    ui.clipboard.forEach(item => {
+                        const clone = { ...item, id: item.type + '_' + Date.now() + Math.random(), cx: item.cx + offset, cy: item.cy + offset };
+                        if (clone.type === 'panel') cvs.panels.push(clone);
+                        else cvs.obs.push(clone);
+                        newSel.push(clone.id);
+                    });
+                    ui.sel = newSel;
+                    ui.tool = 'select';
+                };
+
+                const nudgeSelected = (dirX, dirY) => {
+                    if (!ui.sel.length) return;
+                    pushHist();
+                    const step = (ui.nudgeFast ? 0.1 : 0.01) * SCALE;
+                    const allObjs = [...cvs.panels, ...cvs.obs];
+                    allObjs.filter(p => ui.sel.includes(p.id)).forEach(p => {
+                        p.cx += dirX * step;
+                        p.cy += dirY * step;
+                    });
+                };
+
+                const deleteSelected = () => {
+                    if (!ui.sel.length) return;
+                    pushHist();
+                    cvs.panels = cvs.panels.filter(p => !ui.sel.includes(p.id));
+                    cvs.obs = cvs.obs.filter(o => !ui.sel.includes(o.id));
+                    ui.sel = [];
+                };
+
+                const alignSelected = (mode) => {
+                    const selPanels = cvs.panels.filter(p => ui.sel.includes(p.id));
+                    if (selPanels.length < 2) return;
+                    pushHist();
+                    const gapPx = GAP_M * SCALE;
+                    if (mode === 'row') {
+                        selPanels.sort((a, b) => a.cx - b.cx);
+                        const avgY = selPanels.reduce((s, p) => s + p.cy, 0) / selPanels.length;
+                        selPanels[0].cy = avgY;
+                        for (let i = 1; i < selPanels.length; i++) {
+                            selPanels[i].cy = avgY;
+                            selPanels[i].cx = selPanels[i - 1].cx + selPanels[i - 1].w / 2 + gapPx + selPanels[i].w / 2;
+                        }
+                    } else {
+                        selPanels.sort((a, b) => a.cy - b.cy);
+                        const avgX = selPanels.reduce((s, p) => s + p.cx, 0) / selPanels.length;
+                        selPanels[0].cx = avgX;
+                        for (let i = 1; i < selPanels.length; i++) {
+                            selPanels[i].cx = avgX;
+                            selPanels[i].cy = selPanels[i - 1].cy + selPanels[i - 1].h / 2 + gapPx + selPanels[i].h / 2;
+                        }
+                    }
+                };
+
+                const updateExistingPanelsSize = () => {
+                    if (!cvs.panels.length) return;
+                    const def = db.panels[design.pvIdx] || db.panels[0];
+                    cvs.panels.forEach(p => {
+                        const isLand = p.w > p.h;
+                        const wPx = (def.width / 1000) * SCALE;
+                        const hPx = (def.length / 1000) * SCALE;
+                        p.w = isLand ? hPx : wPx;
+                        p.h = isLand ? wPx : hPx;
+                        p.pvIdx = design.pvIdx;
+                    });
+                };
+
+                const autoFill = () => {
+                    if (cvs.poly.length < 3) return;
+                    pushHist();
+                    cvs.polyClosed = true;
+                    const def = db.panels[design.pvIdx] || db.panels[0];
+                    let w = (def.width / 1000) * SCALE;
+                    let h = (def.length / 1000) * SCALE;
+                    if (design.ori === 'landscape') [w, h] = [h, w];
+
+                    const gapPx = GAP_M * SCALE;
+                    const marginPx = (design.margin || 0) * SCALE;
+                    const stepX = w + gapPx;
+                    const stepY = h + gapPx;
+
+                    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+                    cvs.poly.forEach(p => {
+                        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+                        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+                    });
+
+                    const newPanels = [];
+                    for (let y = minY + marginPx + h / 2; y <= maxY - marginPx - h / 2 + 1; y += stepY) {
+                        for (let x = minX + marginPx + w / 2; x <= maxX - marginPx - w / 2 + 1; x += stepX) {
+                            if (isRectInsidePoly(x, y, w, h, cvs.poly, marginPx)) {
+                                const candidate = {
+                                    id: 'p_' + Date.now() + '_' + Math.random(),
+                                    cx: x, cy: y, w, h,
+                                    str: null, pvIdx: design.pvIdx, type: 'panel'
+                                };
+                                if (!cvs.obs.some(o => rectIntersect(candidate, o))) {
+                                    newPanels.push(candidate);
+                                }
+                            }
+                        }
+                    }
+                    cvs.panels = newPanels;
+                    ui.tool = 'select';
+                };
+
+                // KEYBOARD SHORTCUTS
+                const handleKeydown = (e) => {
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+                    if (e.key === 'Shift') ui.isShift = true;
+                    if (e.code === 'Space') { e.preventDefault(); ui.isSpace = true; }
+                    if (e.ctrlKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+                    if (e.ctrlKey && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+                    if (e.ctrlKey && e.key.toLowerCase() === 'c') { e.preventDefault(); copySelected(); }
+                    if (e.ctrlKey && e.key.toLowerCase() === 'v') { e.preventDefault(); pasteClipboard(); }
+
+                    if ((e.code === 'Delete' || e.code === 'Backspace') && ui.sel.length) {
+                        e.preventDefault();
+                        deleteSelected();
+                    }
+                    if (e.key.toLowerCase() === 'r' && ui.sel.length) {
+                        e.preventDefault();
+                        rotateSelected();
+                    }
+
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code) && ui.sel.length) {
+                        e.preventDefault();
+                        if (!ui.isNudging) { pushHist(); ui.isNudging = true; }
+                        const step = (e.shiftKey ? 0.1 : 0.01) * SCALE;
+                        const allObjs = [...cvs.panels, ...cvs.obs];
+                        allObjs.filter(p => ui.sel.includes(p.id)).forEach(p => {
+                            if (e.code === 'ArrowUp') p.cy -= step;
+                            if (e.code === 'ArrowDown') p.cy += step;
+                            if (e.code === 'ArrowLeft') p.cx -= step;
+                            if (e.code === 'ArrowRight') p.cx += step;
+                        });
+                    }
+                };
+
+                const handleKeyup = (e) => {
+                    if (e.key === 'Shift') ui.isShift = false;
+                    if (e.code === 'Space') ui.isSpace = false;
+                    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) ui.isNudging = false;
+                };
+
+                // HIGH-DPI RENDER ENGINE
+                const getStringColor = (sId) => {
+                    const found = ui.stringDefs.find(s => s.id === sId);
+                    return found ? found.color : '#16a34a';
+                };
+
+                const renderScene = (includeTitleBlock = false) => {
+                    if (!ctx || !canvasEl.value) return;
+
+                    const w = canvasEl.value.width / dpr;
+                    const h = canvasEl.value.height / dpr;
+
+                    ctx.save();
+                    ctx.scale(dpr, dpr);
+
+                    ctx.fillStyle = '#090e1a';
+                    ctx.fillRect(0, 0, w, h);
+
+                    ctx.save();
+                    ctx.translate(vp.x, vp.y);
+                    ctx.scale(vp.scale, vp.scale);
+
+                    // 1. CAD Grid
+                    const startX = Math.floor((-vp.x / vp.scale) / SCALE) * SCALE;
+                    const endX = Math.ceil(((w - vp.x) / vp.scale) / SCALE) * SCALE;
+                    const startY = Math.floor((-vp.y / vp.scale) / SCALE) * SCALE;
+                    const endY = Math.ceil(((h - vp.y) / vp.scale) / SCALE) * SCALE;
+
+                    ctx.lineWidth = 1 / vp.scale;
+                    for (let gx = startX; gx <= endX; gx += SCALE) {
+                        ctx.strokeStyle = (Math.round(gx / SCALE) % 5 === 0) ? '#17233b' : '#0f1829';
+                        ctx.beginPath(); ctx.moveTo(gx, startY); ctx.lineTo(gx, endY); ctx.stroke();
+                    }
+                    for (let gy = startY; gy <= endY; gy += SCALE) {
+                        ctx.strokeStyle = (Math.round(gy / SCALE) % 5 === 0) ? '#17233b' : '#0f1829';
+                        ctx.beginPath(); ctx.moveTo(startX, gy); ctx.lineTo(endX, gy); ctx.stroke();
+                    }
+
+                    // 2. Roof Polygon
+                    if (cvs.poly.length > 0) {
+                        ctx.beginPath();
+                        ctx.moveTo(cvs.poly[0].x, cvs.poly[0].y);
+                        for (let i = 1; i < cvs.poly.length; i++) ctx.lineTo(cvs.poly[i].x, cvs.poly[i].y);
+                        if (ui.tool === 'draw_poly' && !cvs.polyClosed) ctx.lineTo(ui.mx, ui.my);
+                        else if (cvs.polyClosed) ctx.closePath();
+
+                        ctx.fillStyle = 'rgba(30, 42, 120, 0.25)';
+                        if (cvs.polyClosed) ctx.fill();
+                        ctx.strokeStyle = '#22c55e';
+                        ctx.lineWidth = 2 / vp.scale;
+                        ctx.stroke();
+
+                        cvs.poly.forEach((pt, idx) => {
+                            ctx.fillStyle = idx === 0 && ui.tool === 'draw_poly' ? '#22c55e' : '#38bdf8';
+                            ctx.beginPath();
+                            ctx.arc(pt.x, pt.y, 4.5 / vp.scale, 0, Math.PI * 2);
+                            ctx.fill();
+                        });
+                    }
+
+                    if (ui.isRectDraw) {
+                        ctx.fillStyle = 'rgba(22, 163, 74, 0.15)';
+                        ctx.strokeStyle = '#22c55e';
+                        ctx.lineWidth = 2 / vp.scale;
+                        ctx.fillRect(ui.sx, ui.sy, ui.mx - ui.sx, ui.my - ui.sy);
+                        ctx.strokeRect(ui.sx, ui.sy, ui.mx - ui.sx, ui.my - ui.sy);
+                    }
+
+                    // 3. Solar Panels
+                    cvs.panels.forEach(p => {
+                        const isSel = ui.sel.includes(p.id);
+                        const px = p.cx - p.w / 2;
+                        const py = p.cy - p.h / 2;
+
+                        ctx.fillStyle = isSel ? '#1e2a78' : '#0b192c';
+                        ctx.fillRect(px, py, p.w, p.h);
+
+                        ctx.strokeStyle = 'rgba(148, 163, 184, 0.18)';
+                        ctx.lineWidth = 0.75 / vp.scale;
+                        ctx.beginPath();
+                        if (p.h >= p.w) {
+                            ctx.moveTo(p.cx, py); ctx.lineTo(p.cx, py + p.h);
+                            for (let r = 1; r < 6; r++) {
+                                const ry = py + (p.h / 6) * r;
+                                ctx.moveTo(px, ry); ctx.lineTo(px + p.w, ry);
+                            }
+                        } else {
+                            ctx.moveTo(px, p.cy); ctx.lineTo(px + p.w, p.cy);
+                            for (let c = 1; c < 6; c++) {
+                                const rx = px + (p.w / 6) * c;
+                                ctx.moveTo(rx, py); ctx.lineTo(rx, py + p.h);
+                            }
+                        }
+                        ctx.stroke();
+
+                        if (p.str) {
+                            const sCol = getStringColor(p.str);
+                            const inset = 2.5 / vp.scale;
+                            ctx.strokeStyle = sCol;
+                            ctx.lineWidth = 2.2 / vp.scale;
+                            ctx.strokeRect(px + inset, py + inset, p.w - inset * 2, p.h - inset * 2);
+
+                            const badgeW = 20 / vp.scale, badgeH = 13 / vp.scale;
+                            ctx.fillStyle = sCol;
+                            ctx.fillRect(p.cx - badgeW / 2, p.cy - badgeH / 2, badgeW, badgeH);
+                            ctx.fillStyle = '#ffffff';
+                            ctx.font = `bold ${8.5 / vp.scale}px sans-serif`;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(p.str, p.cx, p.cy);
+                        }
+
+                        const halfStroke = 0.6 / vp.scale;
+                        ctx.strokeStyle = isSel ? '#22c55e' : '#94a3b8';
+                        ctx.lineWidth = (isSel ? 2 : 1) / vp.scale;
+                        ctx.strokeRect(px + halfStroke, py + halfStroke, p.w - halfStroke * 2, p.h - halfStroke * 2);
+                    });
+
+                    // 4. Obstacles / Aisles
+                    cvs.obs.forEach(o => {
+                        const isSel = ui.sel.includes(o.id);
+                        const ox = o.cx - o.w / 2, oy = o.cy - o.h / 2;
+                        ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+                        ctx.fillRect(ox, oy, o.w, o.h);
+
+                        ctx.strokeStyle = isSel ? '#fbbf24' : '#f59e0b';
+                        ctx.lineWidth = (isSel ? 2.5 : 1.5) / vp.scale;
+                        ctx.strokeRect(ox, oy, o.w, o.h);
+
+                        ctx.beginPath();
+                        ctx.moveTo(ox, oy); ctx.lineTo(ox + o.w, oy + o.h);
+                        ctx.moveTo(ox + o.w, oy); ctx.lineTo(ox, oy + o.h);
+                        ctx.stroke();
+
+                        ctx.fillStyle = '#fef3c7';
+                        ctx.font = `bold ${9 / vp.scale}px sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(`HÀNH LANG (${(o.w/SCALE).toFixed(1)}x${(o.h/SCALE).toFixed(1)}m)`, o.cx, o.cy);
+                    });
+
+                    // 5. Smart Snap Guides
+                    if (ui.snapGuides.length > 0) {
+                        ctx.strokeStyle = '#f43f5e';
+                        ctx.lineWidth = 1.5 / vp.scale;
+                        ctx.setLineDash([4 / vp.scale, 3 / vp.scale]);
+                        ui.snapGuides.forEach(g => {
+                            ctx.beginPath();
+                            ctx.moveTo(g.x1, g.y1);
+                            ctx.lineTo(g.x2, g.y2);
+                            ctx.stroke();
+                        });
+                        ctx.setLineDash([]);
+                    }
+
+                    // 6. Roof Edge Dimensions (Outward Normal Offset)
+                    if (cvs.poly.length > 0) {
+                        const pts = [...cvs.poly];
+                        if (ui.tool === 'draw_poly' && !cvs.polyClosed) pts.push({ x: ui.mx, y: ui.my });
+
+                        const centX = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+                        const centY = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+
+                        ctx.font = `bold ${10.5 / vp.scale}px Inter, sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+
+                        for (let i = 0; i < pts.length; i++) {
+                            const nextIdx = (i + 1) % pts.length;
+                            if (!cvs.polyClosed && nextIdx === 0) continue;
+                            const p1 = pts[i], p2 = pts[nextIdx];
+                            const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                            const distM = Math.hypot(dx, dy) / SCALE;
+                            if (distM < 0.05) continue;
+
+                            let deg = Math.atan2(dy, dx) * 180 / Math.PI;
+                            if (deg < 0) deg += 360;
+
+                            const midX = (p1.x + p2.x) / 2;
+                            const midY = (p1.y + p2.y) / 2;
+                            let nx = -dy / Math.hypot(dx, dy);
+                            let ny = dx / Math.hypot(dx, dy);
+                            if ((midX + nx * 10 - centX) ** 2 + (midY + ny * 10 - centY) ** 2 < (midX - centX) ** 2 + (midY - centY) ** 2) {
+                                nx = -nx; ny = -ny;
+                            }
+
+                            const labelX = midX + nx * (18 / vp.scale);
+                            const labelY = midY + ny * (18 / vp.scale);
+                            const text = `${distM.toFixed(2)}m | ${Math.round(deg)}°`;
+                            const tw = ctx.measureText(text).width + 10 / vp.scale;
+                            const th = 16 / vp.scale;
+
+                            ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+                            ctx.strokeStyle = '#22c55e';
+                            ctx.lineWidth = 1 / vp.scale;
+                            ctx.fillRect(labelX - tw / 2, labelY - th / 2, tw, th);
+                            ctx.strokeRect(labelX - tw / 2, labelY - th / 2, tw, th);
+
+                            ctx.fillStyle = '#4ade80';
+                            ctx.fillText(text, labelX, labelY);
+                        }
+                    }
+
+                    // 7. Sweep Selection Box
+                    if (ui.isSweep) {
+                        ctx.fillStyle = ui.tool === 'string' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(22, 163, 74, 0.2)';
+                        ctx.strokeStyle = ui.tool === 'string' ? '#a855f7' : '#22c55e';
+                        ctx.lineWidth = 1.5 / vp.scale;
+                        ctx.setLineDash([5 / vp.scale, 3 / vp.scale]);
+                        ctx.fillRect(ui.sx, ui.sy, ui.mx - ui.sx, ui.my - ui.sy);
+                        ctx.strokeRect(ui.sx, ui.sy, ui.mx - ui.sx, ui.my - ui.sy);
+                        ctx.setLineDash([]);
+                    }
+
+                    ctx.restore();
+
+                    // 8. Official Sơn Anh Title Block Watermark on Export
+                    if (includeTitleBlock) {
+                        const tbW = Math.min(w - 24, 480);
+                        const tbH = 78;
+                        const tbX = w - tbW - 12;
+                        const tbY = h - tbH - 12;
+
+                        ctx.fillStyle = 'rgba(15, 23, 42, 0.96)';
+                        ctx.strokeStyle = '#16a34a';
+                        ctx.lineWidth = 2;
+                        ctx.fillRect(tbX, tbY, tbW, tbH);
+                        ctx.strokeRect(tbX, tbY, tbW, tbH);
+
+                        ctx.fillStyle = '#22c55e';
+                        ctx.font = 'bold 12px Inter, sans-serif';
+                        ctx.textAlign = 'left';
+                        ctx.fillText('CÔNG TY TNHH NĂNG LƯỢNG XANH SƠN ANH', tbX + 12, tbY + 20);
+
+                        ctx.fillStyle = '#e2e8f0';
+                        ctx.font = '11px Inter, sans-serif';
+                        ctx.fillText(`Dự án: ${db.settings.projectName || 'Hệ thống Điện mặt trời áp mái'}`, tbX + 12, tbY + 38);
+                        ctx.fillText(`Quy mô: ${tech.value.kwp.toFixed(2)} kWp (${cvs.panels.length} PV) | Kẹp biên: ${bom.value.end} | Kẹp giữa: ${bom.value.mid} | Rail 4.2m: ${bom.value.rails42}`, tbX + 12, tbY + 56);
+                    }
+
+                    ctx.restore();
+                };
+
+                const renderLoop = () => {
+                    requestAnimationFrame(renderLoop);
+                    renderScene(false);
+                };
+
+                // ENGINEERING BOM & FINANCIAL CALCULATIONS
+                const activePvDef = computed(() => db.panels[design.pvIdx] || db.panels[0]);
+                const activeInvDef = computed(() => db.inverters[design.invIdx] || db.inverters[0]);
+
+                const stringGroups = computed(() => {
+                    const map = {};
+                    cvs.panels.forEach(p => { if (p.str) map[p.str] = (map[p.str] || 0) + 1; });
+                    return map;
+                });
+
+                const clearAllStrings = () => {
+                    pushHist();
+                    cvs.panels.forEach(p => p.str = null);
+                };
+
+                const tech = computed(() => {
+                    const len = cvs.panels.length;
+                    const kwp = (len * activePvDef.value.pmax) / 1000;
+                    const autoInv = kwp > 0 ? Math.ceil(kwp / activeInvDef.value.power) : 0;
+                    const inv = design.manInv ? design.invCount : autoInv;
+                    const maxStr = Math.floor((activeInvDef.value.maxDc * 0.9) / activePvDef.value.voc);
+
+                    let areaPx = 0;
+                    if (cvs.poly.length >= 3) {
+                        for (let i = 0; i < cvs.poly.length; i++) {
+                            const j = (i + 1) % cvs.poly.length;
+                            areaPx += cvs.poly[i].x * cvs.poly[j].y - cvs.poly[j].x * cvs.poly[i].y;
+                        }
+                    }
+                    const roofArea = Math.abs(areaPx) / 2 / (SCALE * SCALE);
+                    return { kwp, inv, maxStr, roofArea };
+                });
+
+                const bom = computed(() => {
+                    const len = cvs.panels.length;
+                    if (len === 0) return { end: 0, mid: 0, rails42: 0, splices: 0, lFeet: 0, iron: 0, blocks: 0, tiltHeight: 0 };
+
+                    let qtyEnd = 0, qtyMid = 0, segmentsCount = 0, totalRailMeters = 0, totalSplices = 0;
+                    const groups = { portrait: [], landscape: [] };
+                    cvs.panels.forEach(p => {
+                        if (p.h >= p.w) groups.portrait.push(p);
+                        else groups.landscape.push(p);
+                    });
+
+                    const tol = 0.08 * SCALE;
+
+                    for (let key in groups) {
+                        const list = groups[key];
+                        const rows = [];
+                        list.forEach(p => {
+                            const row = rows.find(r => Math.abs(r.y - p.cy) < tol);
+                            if (row) {
+                                row.panels.push(p);
+                                row.y = row.panels.reduce((s, x) => s + x.cy, 0) / row.panels.length;
+                            } else {
+                                rows.push({ y: p.cy, panels: [p] });
+                            }
+                        });
+
+                        rows.forEach(row => {
+                            row.panels.sort((a, b) => a.cx - b.cx);
+                            let segLen = 0;
+                            let segWidthPx = 0;
+                            for (let i = 0; i < row.panels.length; i++) {
+                                const curr = row.panels[i];
+                                segLen++;
+                                segWidthPx += curr.w;
+                                if (i === row.panels.length - 1) {
+                                    segmentsCount++;
+                                    qtyEnd += 4;
+                                    qtyMid += (segLen - 1) * 2;
+                                    const segMeters = (segWidthPx + (segLen - 1) * GAP_M * SCALE) / SCALE;
+                                    totalRailMeters += segMeters * 2;
+                                    totalSplices += Math.max(0, Math.ceil(segMeters / 4.2) - 1) * 2;
+                                } else {
+                                    const next = row.panels[i + 1];
+                                    const expectedDist = (curr.w / 2) + (next.w / 2) + GAP_M * SCALE;
+                                    if (Math.abs((next.cx - curr.cx) - expectedDist) > tol) {
+                                        segmentsCount++;
+                                        qtyEnd += 4;
+                                        qtyMid += (segLen - 1) * 2;
+                                        const segMeters = (segWidthPx + (segLen - 1) * GAP_M * SCALE) / SCALE;
+                                        totalRailMeters += segMeters * 2;
+                                        totalSplices += Math.max(0, Math.ceil(segMeters / 4.2) - 1) * 2;
+                                        segLen = 0;
+                                        segWidthPx = 0;
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    const rails42 = Math.ceil(totalRailMeters / 4.2);
+                    const lFeet = Math.ceil(totalRailMeters / 1.2) + segmentsCount * 2;
+
+                    let peri = 0;
+                    for (let i = 0; i < cvs.poly.length; i++) {
+                        const next = cvs.poly[(i + 1) % cvs.poly.length];
+                        peri += Math.hypot(next.x - cvs.poly[i].x, next.y - cvs.poly[i].y) / SCALE;
+                    }
+                    const iron = (len * 3) + peri + (len / 2 * 1.5);
+
+                    let minY = Infinity, maxY = -Infinity;
+                    cvs.panels.forEach(p => { minY = Math.min(minY, p.cy - p.h / 2); maxY = Math.max(maxY, p.cy + p.h / 2); });
+                    const arrayLengthM = (maxY - minY) / SCALE;
+                    const tiltHeight = arrayLengthM * Math.tan(10 * Math.PI / 180);
+
+                    return { end: qtyEnd, mid: qtyMid, rails42, splices: totalSplices, lFeet, iron, blocks: segmentsCount, tiltHeight };
+                });
+
+                const adjustBills = () => {
+                    while (fin.bills.length < fin.numHH) fin.bills.push(3000000);
+                    if (fin.bills.length > fin.numHH) fin.bills.length = fin.numHH;
+                };
+
+                const revTier = (vnd) => {
+                    let kwh = 0, rem = vnd;
+                    for (let t of db.tariffs.tiered) {
+                        const maxCost = t.size * t.price;
+                        if (rem > maxCost && t.size !== Infinity) { kwh += t.size; rem -= maxCost; }
+                        else { kwh += rem / t.price; break; }
+                    }
+                    return kwh;
+                };
+
+                const fwdTier = (kwh, numHouseholds) => {
+                    let bill = 0, rem = kwh;
+                    for (let t of db.tariffs.tiered) {
+                        const limit = t.size * numHouseholds;
+                        if (rem > limit && t.size !== Infinity) { bill += limit * t.price; rem -= limit; }
+                        else { bill += rem * t.price; break; }
+                    }
+                    return bill;
+                };
+
+                const finRes = computed(() => {
+                    let oldVnd = 0, oldKwh = 0;
+                    const count = fin.type === 'tiered' ? fin.numHH : fin.bills.length;
+                    for (let i = 0; i < count; i++) {
+                        const b = fin.bills[i] || 0;
+                        oldVnd += b;
+                        if (fin.type === 'tiered') {
+                            oldKwh += revTier(b);
+                        } else {
+                            const avgPrice = (fin.curRatio.n / 100) * db.tariffs.tou.normal +
+                                             (fin.curRatio.p / 100) * db.tariffs.tou.peak +
+                                             (fin.curRatio.o / 100) * db.tariffs.tou.offpeak;
+                            oldKwh += avgPrice > 0 ? b / avgPrice : 0;
+                        }
+                    }
+
+                    const solKwh = tech.value.kwp * db.settings.sunHours * 30 * 0.8;
+                    let newVnd = 0, remKwh = 0;
+
+                    if (fin.type === 'tiered') {
+                        remKwh = Math.max(0, oldKwh - solKwh);
+                        newVnd = fwdTier(remKwh, fin.numHH);
+                    } else {
+                        const curN = oldKwh * (fin.curRatio.n / 100);
+                        const curP = oldKwh * (fin.curRatio.p / 100);
+                        const curO = oldKwh * (fin.curRatio.o / 100);
+                        const solN = solKwh * (fin.solRatio.n / 100);
+                        const solP = solKwh * (fin.solRatio.p / 100);
+                        const remN = Math.max(0, curN - solN);
+                        const remP = Math.max(0, curP - solP);
+                        remKwh = remN + remP + curO;
+                        newVnd = remN * db.tariffs.tou.normal + remP * db.tariffs.tou.peak + curO * db.tariffs.tou.offpeak;
+                    }
+
+                    const save = Math.max(0, oldVnd - newVnd);
+                    const roi = save > 0 ? fin.totalCost / (save * 12) : 0;
+                    return { oldVnd, oldKwh, solKwh, remKwh, newVnd, save, roi };
+                });
+
+                // ==================== UNIFIED SINGLE-FILE EXCEL IMPORT & EXPORT ====================
+                const importUnifiedExcel = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const wb = XLSX.read(evt.target.result, { type: 'binary' });
+                            let loadedPv = 0, loadedInv = 0;
+
+                            wb.SheetNames.forEach(sheetName => {
+                                const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+                                if (!rows.length) return;
+                                const first = rows[0];
+                                const lowerName = sheetName.toLowerCase();
+
+                                // Nhận diện Sheet Tấm Pin (theo tên sheet hoặc cột Pmax/Voc/Dài)
+                                if (lowerName.includes('pin') || lowerName.includes('pv') || 'Pmax' in first || 'Voc' in first || 'Dài' in first) {
+                                    const parsedPv = rows.filter(r => r['Tên'] || r['Name']).map(r => ({
+                                        name: String(r['Tên'] || r['Name'] || 'PV Module'),
+                                        length: Number(r['Dài'] || r['Length'] || 2384),
+                                        width: Number(r['Rộng'] || r['Width'] || 1303),
+                                        pmax: Number(r['Pmax'] || 655),
+                                        voc: Number(r['Voc'] || 45.6)
+                                    }));
+                                    if (parsedPv.length) {
+                                        db.panels = parsedPv;
+                                        design.pvIdx = 0;
+                                        loadedPv = parsedPv.length;
+                                    }
+                                }
+                                // Nhận diện Sheet Biến Tần (theo tên sheet hoặc cột Công suất/Max DC)
+                                else if (lowerName.includes('inv') || lowerName.includes('bien') || 'Max DC' in first || 'MaxDC' in first || 'Công suất' in first || 'kW' in first) {
+                                    const parsedInv = rows.filter(r => r['Tên'] || r['Name']).map(r => ({
+                                        name: String(r['Tên'] || r['Name'] || 'Inverter'),
+                                        power: Number(r['Công suất'] || r['kW'] || 12),
+                                        maxDc: Number(r['Max DC'] || r['MaxDC'] || 1000)
+                                    }));
+                                    if (parsedInv.length) {
+                                        db.inverters = parsedInv;
+                                        design.invIdx = 0;
+                                        loadedInv = parsedInv.length;
+                                    }
+                                }
+                            });
+
+                            updateExistingPanelsSize();
+                            showToast(`Đã nạp thành công ${loadedPv} Tấm Pin & ${loadedInv} Biến Tần từ 1 file Excel!`);
+                            e.target.value = '';
+                        } catch (err) {
+                            alert('Không thể đọc file Excel. Vui lòng kiểm tra định dạng .xlsx!');
+                        }
+                    };
+                    reader.readAsBinaryString(file);
+                };
+
+                // Xuất 1 File Excel Thiết Bị Chung gồm 2 Sheet: DS_TamPin và DS_Inverter
+                const downloadUnifiedExcel = () => {
+                    const wb = XLSX.utils.book_new();
+                    const pvSheetData = db.panels.map(p => ({
+                        'Tên': p.name,
+                        'Dài': p.length,
+                        'Rộng': p.width,
+                        'Pmax': p.pmax,
+                        'Voc': p.voc
+                    }));
+                    const invSheetData = db.inverters.map(inv => ({
+                        'Tên': inv.name,
+                        'Công suất': inv.power,
+                        'Max DC': inv.maxDc
+                    }));
+                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pvSheetData), 'DS_TamPin');
+                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invSheetData), 'DS_Inverter');
+                    XLSX.writeFile(wb, 'CSDL_ThietBi_Solar_SonAnh.xlsx');
+                    showToast('Đã tải xuống file Excel Thiết Bị Gộp Chung (2 Sheet)!');
+                };
+
+                // Xuất Báo cáo BOM & Phân tích Tài chính ra 1 File Excel
+                const exportBomReportExcel = () => {
+                    const wb = XLSX.utils.book_new();
+                    const bomRows = [
+                        { 'Hạng Mục Vật Tư & Thiết Bị': `Tấm Pin: ${activePvDef.value.name}`, 'Đơn Vị': 'Tấm', 'Số Lượng': cvs.panels.length, 'Ghi Chú Kỹ Thuật': `Tổng công suất: ${tech.value.kwp.toFixed(2)} kWp` },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': `Biến Tần: ${activeInvDef.value.name}`, 'Đơn Vị': 'Máy', 'Số Lượng': tech.value.inv, 'Ghi Chú Kỹ Thuật': `Giới hạn: Tối đa ${tech.value.maxStr} PV/String` },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': 'Kẹp biên nhôm (End Clamp)', 'Đơn Vị': 'Cái', 'Số Lượng': bom.value.end, 'Ghi Chú Kỹ Thuật': `Tính cho ${bom.value.blocks} dãy pin riêng biệt` },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': 'Kẹp giữa nhôm (Mid Clamp)', 'Đơn Vị': 'Cái', 'Số Lượng': bom.value.mid, 'Ghi Chú Kỹ Thuật': 'Khe hở tiêu chuẩn 20mm' },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': 'Thanh Rail nhôm chuyên dụng 4.2m', 'Đơn Vị': 'Thanh', 'Số Lượng': bom.value.rails42, 'Ghi Chú Kỹ Thuật': '2 đường rail đỡ dưới mỗi dãy pin' },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': 'Khớp nối thanh Rail nhôm (Splice)', 'Đơn Vị': 'Bộ', 'Số Lượng': bom.value.splices, 'Ghi Chú Kỹ Thuật': 'Nối các dãy dài trên 4.2m' },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': 'Chân L / Pát Z bắt mái tôn', 'Đơn Vị': 'Cái', 'Số Lượng': bom.value.lFeet, 'Ghi Chú Kỹ Thuật': 'Khoảng cách bước chân ~1.2m' },
+                        { 'Hạng Mục Vật Tư & Thiết Bị': 'Sắt hộp mạ kẽm kết cấu khung', 'Đơn Vị': 'Mét', 'Số Lượng': Math.ceil(bom.value.iron), 'Ghi Chú Kỹ Thuật': `Chân sau nâng góc 10° cao ${bom.value.tiltHeight.toFixed(2)}m` }
+                    ];
+                    const finRows = [
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Chủ đầu tư / Dự án', 'Giá Trị': db.settings.projectName },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Quy mô hệ thống (kWp)', 'Giá Trị': tech.value.kwp.toFixed(2) },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Sản lượng điện mặt trời dự kiến (kWh/tháng)', 'Giá Trị': Math.round(finRes.value.solKwh) },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Tiền điện hàng tháng trước khi lắp (VNĐ)', 'Giá Trị': Math.round(finRes.value.oldVnd) },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Tiền điện hàng tháng sau khi lắp (VNĐ)', 'Giá Trị': Math.round(finRes.value.newVnd) },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Tiền điện tiết kiệm hàng tháng (VNĐ)', 'Giá Trị': Math.round(finRes.value.save) },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Tiền điện tiết kiệm hàng năm (VNĐ)', 'Giá Trị': Math.round(finRes.value.save * 12) },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Tổng mức đầu tư trọn gói CAPEX (VNĐ)', 'Giá Trị': fin.totalCost },
+                        { 'Chỉ Tiêu Phân Tích Tài Chính': 'Thời gian hoàn vốn ROI (Năm)', 'Giá Trị': finRes.value.roi > 0 ? Number(finRes.value.roi.toFixed(2)) : 'N/A' }
+                    ];
+                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bomRows), 'BocTach_VatTu_BOM');
+                    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(finRows), 'HieuQua_DauTu_ROI');
+                    XLSX.writeFile(wb, `BaoCao_Solar_SonAnh_${tech.value.kwp.toFixed(2)}kWp.xlsx`);
+                    showToast('Đã xuất Báo cáo BOM & Tài chính ra file Excel!');
+                };
+
+                const exportImage = () => {
+                    if (!canvasEl.value) return;
+                    renderScene(true);
+                    const link = document.createElement('a');
+                    link.download = `SonAnh_Solar_${tech.value.kwp.toFixed(2)}kWp.png`;
+                    link.href = canvasEl.value.toDataURL('image/png');
+                    link.click();
+                    showToast('Đã xuất ảnh bản vẽ kỹ thuật PNG!');
+                };
+
+                const saveProjectFile = () => {
+                    const payload = JSON.stringify({ db, design, fin, cvs }, null, 2);
+                    const blob = new Blob([payload], { type: 'application/json' });
+                    const link = document.createElement('a');
+                    link.download = `SonAnh_Solar_${tech.value.kwp.toFixed(2)}kWp.json`;
+                    link.href = URL.createObjectURL(blob);
+                    link.click();
+                    showToast('Đã lưu file dự án (.json)!');
+                };
+
+                const loadProjectFile = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const parsed = JSON.parse(evt.target.result);
+                            if (parsed.db) Object.assign(db, parsed.db);
+                            if (parsed.design) Object.assign(design, parsed.design);
+                            if (parsed.fin) Object.assign(fin, parsed.fin);
+                            if (parsed.cvs) Object.assign(cvs, parsed.cvs);
+                            setTimeout(fitToScreen, 50);
+                            showToast('Đã mở dự án thành công!');
+                        } catch (err) { alert('File dự án không hợp lệ!'); }
+                    };
+                    reader.readAsText(file);
+                };
+
+                const clearCanvas = () => {
+                    pushHist();
+                    cvs.poly = []; cvs.polyClosed = false; cvs.panels = []; cvs.obs = []; ui.sel = [];
+                };
+
+                const fmt = v => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v || 0);
+
+                return {
+                    activeTab, mobileSheet, SCALE, db, design, fin, cvs, hist, vp, ui, canvasEl, canvasWrap, isPanning,
+                    activePvDef, activeInvDef, stringGroups, tech, bom, finRes,
+                    setTool, closePolygon, applyExactPolyLength, autoFill, carvePanelsByObstacles,
+                    rotateSelected, copySelected, pasteClipboard, nudgeSelected, deleteSelected, alignSelected,
+                    updateExistingPanelsSize, clearAllStrings,
+                    onWheel, onMouseDown, onMouseMove, onMouseUp, onTouchStart, onTouchMove, onTouchEnd,
+                    undo, redo, fitToScreen, clearCanvas,
+                    adjustBills, importUnifiedExcel, downloadUnifiedExcel, exportBomReportExcel, exportImage, saveProjectFile, loadProjectFile,
+                    getStringColor, fmt
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
